@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import random
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -18,6 +19,7 @@ import numpy as np
 import re
 from bs4 import BeautifulSoup
 import platform
+import uuid
 
 # 페이지 설정 (가장 먼저 호출)
 st.set_page_config(layout="wide", page_title="로또킹 분석", initial_sidebar_state="collapsed")
@@ -483,7 +485,7 @@ def tab4_content():
   if 'ai_combinations' not in st.session_state:
     st.session_state['ai_combinations'] = []
   if 'ai_show_result' not in st.session_state:
-        st.session_state['ai_show_result'] = False
+    st.session_state['ai_show_result'] = False
   
   st.markdown("<h2 style='color:lime;'>🧠 AI 통합 추천</h2>", unsafe_allow_html=True)
 
@@ -581,7 +583,7 @@ def tab4_content():
           weights[i] = max(0.3, min(weights[i], 2.5))
   
   st.markdown("""
-  <p style='color:#666; font-size:15px; margin-bottom:20px;'>
+  <p style='color:white; font-size:15px; margin-bottom:20px;'>
   ✨ <b>AI 고급 분석:</b> 사용자 설정 가중치와 다양한 필터를 결합하여 최적의 조합을 추천합니다.
   </p>
   """, unsafe_allow_html=True)
@@ -733,9 +735,45 @@ def tab4_content():
       # 전체 HTML을 한 번에 생성
       html_output = ""
       for i, comb in enumerate(st.session_state['ai_combinations']):
-        html_output += f"<p style='font-weight:bold; margin:15px 0 5px 0;'>🎯 AI 조합 {i+1}</p>"
+        # AI 예측 점수 계산 (가중치 + 패턴 점수)
+        score = 0
+        # 1. 가중치 점수 (0~50점) - weights 딕셔너리 활용
+        w_sum = sum(weights.get(n, 1.0) for n in comb)
+        w_score = min(50, int((w_sum / 10.0) * 50)) 
+        
+        # 2. 패턴 점수 (합계, 홀짝) (0~40점)
+        s = sum(comb)
+        if 120 <= s <= 140: score += 20
+        elif 100 <= s <= 160: score += 10
+        
+        odd = sum(1 for n in comb if n % 2 == 1)
+        if odd == 3: score += 20
+        elif odd in [2, 4]: score += 15
+        else: score += 5
+        
+        # 최종 점수 (최대 99점, 최소 60점 보정)
+        total_score = min(99, max(60, w_score + score + (s % 5)))
+        
+        html_output += f"<p style='color:white; font-weight:bold; margin:15px 0 5px 0;'>🎯 AI 조합 {i+1}</p>"
         balls_html = generate_lotto_balls_html(comb, size=55, font_size=20, use_flex=True, extra_css="font-weight:bold; box-shadow:0 2px 4px rgba(0,0,0,0.2);")
-        html_output += f"<div style='display:flex; gap:8px; margin-bottom:15px;'>{balls_html}</div>"
+        
+        # 점수 표시 바 (색상 구분: 초록-높음, 주황-중간, 빨강-낮음)
+        color = "#00c853" if total_score >= 85 else "#ffa500" if total_score >= 75 else "#ff4b4b"
+        
+        html_output += f"""
+        <div style='display:flex; flex-direction:column; gap:5px; margin-bottom:20px;'>
+            <div style='display:flex; gap:8px;'>{balls_html}</div>
+            <div style='background-color:rgba(255,255,255,0.1); border-radius:8px; padding:8px 12px; margin-top:5px; display:flex; align-items:center; justify-content:space-between;'>
+                <span style='color:white; font-size:14px;'>🤖 AI 당첨 예측지수</span>
+                <div style='display:flex; align-items:center; gap:10px;'>
+                    <div style='width:100px; height:8px; background:#444; border-radius:4px; overflow:hidden;'>
+                        <div style='width:{total_score}%; height:100%; background:{color};'></div>
+                    </div>
+                    <span style='color:{color}; font-weight:bold; font-size:16px;'>{total_score}%</span>
+                </div>
+            </div>
+        </div>
+        """
       
       st.markdown(html_output, unsafe_allow_html=True)
       
@@ -806,6 +844,60 @@ def tab4_content():
           file_name=f"lotto_ai_recommendations_{datetime.date.today()}.png",
           mime="image/png"
       )
+      
+      # 카카오톡/공유하기 기능 (JS 주입)
+      share_text = "[👑 로또킹 AI 추천 번호]\\n"
+      for idx, comb in enumerate(st.session_state['ai_combinations']):
+          share_text += f"{idx+1}게임: {', '.join(map(str, comb))}\\n"
+      share_text += "\\n당첨을 기원합니다! 🍀"
+      
+      components.html(f"""
+      <style>
+        .kakao-btn {{
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            height: 40px;
+            padding: 0.5rem;
+            background-color: #FEE500;
+            color: #3C1E1E;
+            border: none;
+            border-radius: 4px;
+            font-family: "Source Sans Pro", sans-serif;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            text-decoration: none;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+            transition: background-color 0.2s;
+        }}
+        .kakao-btn:hover {{
+            background-color: #FADA0A;
+        }}
+      </style>
+      <button class="kakao-btn" onclick="shareToKakao()">
+        💬 카카오톡으로 공유 / 복사
+      </button>
+      <script>
+        function shareToKakao() {{
+            const text = `{share_text}`;
+            if (navigator.share) {{
+                navigator.share({{
+                    title: '로또킹 추천 번호',
+                    text: text
+                }}).then(() => console.log('Shared successfully'))
+                .catch((error) => console.log('Error sharing', error));
+            }} else {{
+                navigator.clipboard.writeText(text).then(function() {{
+                    alert('📋 번호가 복사되었습니다!\\n카카오톡을 열고 붙여넣기(Ctrl+V) 하세요.');
+                }}, function(err) {{
+                    prompt('Ctrl+C를 눌러 복사하세요:', text);
+                }});
+            }}
+        }}
+      </script>
+      """, height=50)
 
       if has_data:
         st.success("🎯 **10/10 AI 분석 완료:** 빈도·추세·미출현 패턴 + 구간균형 + 홀짝비율 + 번호합계 + 연속번호 제어 적용")
@@ -1009,6 +1101,34 @@ def tab5_content():
   except Exception as e:
     st.error(f"데이터 로드 오류: {e}")
 
+def play_bgm():
+    
+    """
+    은은한 클래식 배경음악을 재생합니다. (Playlist)
+    """
+    # 유튜브 임베드 Playlist (클래식 명곡 모음)
+    # 1. Erik Satie - Gymnopédie No.1 (S-Xm7s9eGxU)
+    # 2. Debussy - Clair de Lune (CvFH_6DNRCY)
+    # 3. Chopin - Nocturne Op.9 No.2 (9E6b3swbnWg)
+    video_ids = "S-Xm7s9eGxU,CvFH_6DNRCY,9E6b3swbnWg"
+    youtube_src = f"https://www.youtube.com/embed/S-Xm7s9eGxU?autoplay=1&loop=1&playlist={video_ids}&controls=1"
+    
+    st.markdown(
+        f"""
+        <div style="margin-top: 10px; opacity: 0.9;">
+            <iframe width="280" height="157" 
+                    src="{youtube_src}" 
+                    frameborder="0" 
+                    allow="autoplay; encrypted-media" 
+                    allowfullscreen
+                    style="border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">
+            </iframe>
+            <div style="font-size: 12px; color: #ccc; margin-top: 4px;">⚠️ 재생 버튼을 누르면 클래식 명곡들이 연속 재생됩니다.</div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
 
 def render_header():
     """ Renders the custom top header for the app. """
@@ -1058,6 +1178,10 @@ def render_header():
             </div>
         </div>
     """, unsafe_allow_html=True)
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    if st.checkbox("🎵 배경음악 (Classic)", value=False, key="bgm_toggle", help="배경음악: 클래식 명곡 모음 (YouTube)"):
+        play_bgm()
 
 def render_sidebar():
     """ Renders the content for the left sidebar. """
