@@ -283,6 +283,32 @@ def update_lotto_data_online():
     except Exception as e:
         return False, f"파일 저장 중 오류가 발생했습니다: {e}"
 
+# --- 회차 및 날짜 계산 공통 함수 ---
+def get_next_round_info():
+    """
+    현재 시간(KST)을 기준으로 다음 로또 회차와 추첨일을 정확히 계산합니다.
+    1회차 기준: 2002년 12월 7일(토) 20:40
+    """
+    base_date = datetime.datetime(2002, 12, 7, 20, 40, 0)
+    utc_now = datetime.datetime.utcnow()
+    kst_now = utc_now + datetime.timedelta(hours=9)
+    
+    # 기준일로부터 경과한 시간
+    time_diff = kst_now - base_date
+    weeks_passed = time_diff.days // 7
+    
+    # 이번 주 토요일 추첨 기준 시간 (계산된 주차의 토요일)
+    upcoming_draw_date = base_date + datetime.timedelta(days=weeks_passed * 7)
+    
+    # 현재 시간이 이번 주 추첨 시간을 지났으면 다음 회차(weeks_passed + 2), 아니면 이번 회차(weeks_passed + 1)
+    # 1회차부터 시작하므로 인덱스 보정 필요
+    if kst_now > upcoming_draw_date:
+        next_round = weeks_passed + 2
+    else:
+        next_round = weeks_passed + 1
+        
+    next_date = base_date + datetime.timedelta(days=(next_round - 1) * 7)
+    return next_round, next_date.strftime("%Y-%m-%d")
 
 def tab1_content():
   # session_state 초기화
@@ -407,6 +433,8 @@ def tab2_content():
 
 
 def tab3_content():
+  next_round, next_date = get_next_round_info()
+  
   import matplotlib
   import matplotlib.font_manager as fm
 
@@ -439,7 +467,17 @@ def tab3_content():
       st.error("`past_results.csv` 파일을 찾을 수 없거나 데이터가 손상되었습니다. 앱을 재시작하거나 데이터를 확인해주세요.")
       return
   latest_round = past_results["회차_int"].max()
+  
+  # 현재 분석 중인 회차 정보 배너 표시
+  st.info(f"📢 **현재 분석 대상:** 제 {next_round}회차 예측 ({next_date} 추첨) | **최신 데이터:** {latest_round}회까지 반영됨")
+
   st.markdown("<h2 style='color:orange;'>📊 통계 추천</h2>", unsafe_allow_html=True)
+  st.markdown(f"""
+  <div style='text-align:right; color:#ccc; font-size:14px; margin-bottom:10px;'>
+      🎯 목표: <b>제 {next_round}회 당첨</b> 도전
+  </div>
+  """, unsafe_allow_html=True)
+
   # 회차 범위 옵션 및 실제 범위 계산
   ranges = [300, 150, 75, 45, 30, 15, 5]
   options = [f"최근 {r}회" for r in ranges]
@@ -512,6 +550,7 @@ def tab3_content():
           st.warning("데이터가 부족하여 추천할 수 없습니다.")
 
 def tab4_content():
+  next_round, next_date = get_next_round_info()
   # session_state 초기화
   if 'ai_combinations' not in st.session_state:
     st.session_state['ai_combinations'] = []
@@ -519,6 +558,13 @@ def tab4_content():
     st.session_state['ai_show_result'] = False
   
   st.markdown("<h2 style='color:lime;'>🧠 AI 통합 추천</h2>", unsafe_allow_html=True)
+  
+  # AI 분석 목표 회차 표시
+  st.markdown(f"""
+  <div style='background:rgba(0,255,0,0.1); padding:10px; border-radius:10px; border:1px solid lime; text-align:center; margin-bottom:20px;'>
+      🚀 <b>제 {next_round}회 ({next_date})</b> 당첨번호 AI 예측 분석 중
+  </div>
+  """, unsafe_allow_html=True)
 
   past_results = load_lotto_data()
   if past_results is None:
@@ -789,7 +835,7 @@ def tab4_content():
         # 최종 점수 (최대 99점, 최소 60점 보정)
         total_score = min(99, max(60, w_score + score + (s % 5)))
         
-        html_output += f"<p style='color:white; font-weight:bold; margin:15px 0 5px 0;'>🎯 AI 조합 {i+1}</p>"
+        html_output += f"<p style='color:white; font-weight:bold; margin:15px 0 5px 0;'>🎯 AI 조합 {i+1} <span style='font-size:12px; color:#aaa; font-weight:normal;'>(제 {next_round}회 예상)</span></p>"
         balls_html = generate_lotto_balls_html(comb, size=45, font_size=18, use_flex=True, extra_css="font-weight:bold; box-shadow:0 2px 4px rgba(0,0,0,0.2);")
         
         # 점수 표시 바 (색상 구분: 초록-높음, 주황-중간, 빨강-낮음)
@@ -813,7 +859,7 @@ def tab4_content():
       st.markdown(html_output, unsafe_allow_html=True)
       
       # --- 이미지 생성 및 다운로드 기능 ---
-      def create_combinations_image(combinations):
+      def create_combinations_image(combinations, target_round):
           ball_size = 45 # 10개 배치 위해 사이즈 축소
           padding = 25
           h_spacing = 10
@@ -849,7 +895,7 @@ def tab4_content():
 
           for i, comb in enumerate(combinations):
               y_pos = padding + i * row_height
-              draw.text((padding, y_pos), f"🎯 AI 조합 {i+1}", fill=(50, 50, 50), font=title_font)
+              draw.text((padding, y_pos), f"🎯 AI 조합 {i+1} (제 {target_round}회)", fill=(50, 50, 50), font=title_font)
 
               for j, num in enumerate(comb):
                   x_pos = padding + j * (ball_size + h_spacing)
@@ -882,7 +928,7 @@ def tab4_content():
           image.save(buf, format='PNG')
           return buf.getvalue()
       
-      image_bytes = create_combinations_image(st.session_state['ai_combinations'])
+      image_bytes = create_combinations_image(st.session_state['ai_combinations'], next_round)
       st.download_button(
           label="🖼️ 이미지로 저장",
           data=image_bytes,
@@ -893,7 +939,7 @@ def tab4_content():
       # 카카오톡/공유하기 기능 (JS 주입)
       share_text = "[👑 로또킹 AI 추천 번호]\\n"
       for idx, comb in enumerate(st.session_state['ai_combinations']):
-          share_text += f"{idx+1}게임: {', '.join(map(str, comb))}\\n"
+          share_text += f"{idx+1}게임: {', '.join(map(str, comb))} (제 {next_round}회)\\n"
       share_text += "\\n당첨을 기원합니다! 🍀"
       
       components.html(f"""
@@ -1193,35 +1239,14 @@ def play_bgm():
 
 def render_header():
     """ Renders the custom top header for the app. """
-    # 데이터 파일 의존성을 제거하고, 현재 시간 기준으로 다음 회차를 계산합니다.
-    # 1회차 기준: 2002년 12월 7일 토요일 (추첨 시간 대략 20:40)
-    base_date = datetime.datetime(2002, 12, 7, 20, 40, 0)
-    
-    # 한국 시간(KST) 보정 (Streamlit Cloud는 UTC 기준일 수 있음)
-    utc_now = datetime.datetime.utcnow()
-    kst_now = utc_now + datetime.timedelta(hours=9)
-    
-    # 기준일로부터 경과한 시간 계산
-    time_diff = kst_now - base_date
-    weeks_passed = time_diff.days // 7
-    
-    # 이번 주 토요일 추첨일(기준일 + 경과주수 * 7일)
-    upcoming_draw_date = base_date + datetime.timedelta(days=weeks_passed * 7)
-    
-    # 현재 시간이 이번 주 추첨 시간을 지났으면 '다음 주'가 다음 회차, 안 지났으면 '이번 주'가 다음 회차
-    if kst_now > upcoming_draw_date:
-        next_draw_round = (weeks_passed + 1) + 1 # 1회차부터 시작하므로 +1, 다음주니까 +1
-    else:
-        next_draw_round = weeks_passed + 1
-
-    next_draw_date = base_date + datetime.timedelta(days=(next_draw_round - 1) * 7)
-    next_date_str = next_draw_date.strftime("%Y-%m-%d")
+    # 공통 함수 사용
+    next_draw_round, next_date_str = get_next_round_info()
 
     # '좋아요' 링크 생성
     try:
         current_params = st.query_params.to_dict()
         like_params = current_params.copy()
-        like_params['action'] = 'like's
+        like_params['action'] = 'like'
         like_url = f"?{urllib.parse.urlencode(like_params)}"
     except Exception:
         like_url = "?action=like" # Fallback
@@ -1249,7 +1274,7 @@ def render_header():
                 ✨ 로또킹 PRO 2.0 (10조합 업데이트) 🚀
             </div>
             <div class="header-right">
-                추첨회차: 제 {next_draw_round}회 ({next_date_str})
+                🔜 이번주 추첨: 제 {next_draw_round}회 ({next_date_str})
             </div>
         </div>
     """, unsafe_allow_html=True)
