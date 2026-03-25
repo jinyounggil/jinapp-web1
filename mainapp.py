@@ -110,20 +110,40 @@ def get_color(n):
   else:
     return "green"  # 초록
 
-def generate_lotto_balls_html(numbers, size, font_size, margin="2px", use_flex=False, extra_css="", opacity_map=None):
-    """로또 공 목록에 대한 HTML을 생성합니다."""
+def generate_lotto_balls_html(numbers, size, font_size, margin="2px", use_flex=False, extra_css="", opacity_map=None, highlight_nums=None):
+    """로또 공 목록에 대한 HTML을 생성합니다. (3D 입체 효과 + 내부 흰색 원 적용)"""
     html_output = []
     for n in numbers:
         color = get_color(n)
-        text_color = "black" if color == "gold" else "white"
+        # 텍스트는 내부 흰색 원 안에 들어가므로 항상 검정색
+        text_color = "black" 
         opacity = opacity_map.get(n, 1.0) if opacity_map else 1.0
-
-        if use_flex:
-            style = f"background-color:{color}; color:{text_color}; border-radius:50%; width:{size}px; height:{size}px; display:flex; align-items:center; justify-content:center; font-size:{font_size}px; opacity:{opacity}; {extra_css}"
-            html_output.append(f"<div style='{style}'>{n}</div>")
-        else:
-            style = f"display:inline-block; background:{color}; color:{text_color}; border-radius:50%; width:{size}px; height:{size}px; text-align:center; line-height:{size}px; margin:{margin}; font-size:{font_size}px; opacity:{opacity}; {extra_css}"
-            html_output.append(f"<span style='{style}'>{n}</span>")
+        
+        # 반짝이는 애니메이션 효과 (일치하는 번호일 경우)
+        animation_style = ""
+        if highlight_nums and n in highlight_nums:
+            animation_style = "animation: blink-effect 0.8s infinite alternate; border: 2px solid #fff700;"
+        
+        # 입체적인 외부 공 스타일 (그라데이션 + 그림자)
+        outer_style = f"""
+            background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.8), {color} 40%, rgba(0,0,0,0.6) 120%);
+            box-shadow: 2px 3px 5px rgba(0,0,0,0.4), inset -2px -2px 5px rgba(0,0,0,0.2);
+            border-radius: 50%; width:{size}px; height:{size}px;
+            display:inline-flex; align-items:center; justify-content:center;
+            margin:{margin}; opacity:{opacity}; {extra_css} {animation_style}
+        """
+        
+        # 내부 흰색 원 스타일
+        inner_size = int(size * 0.65) # 공 크기의 65%
+        inner_style = f"""
+            background: white; width:{inner_size}px; height:{inner_size}px; border-radius:50%;
+            display:flex; align-items:center; justify-content:center;
+            color:black; font-weight:bold; font-size:{font_size}px;
+            box-shadow: inset 1px 1px 2px rgba(0,0,0,0.3);
+        """
+        
+        html_output.append(f"<div style='{outer_style}'><div style='{inner_style}'>{n}</div></div>")
+        
     return "".join(html_output)
 
 
@@ -134,19 +154,23 @@ def load_lotto_data():
     데이터는 캐시되어 앱 성능을 향상시킵니다.
     """
     try:
+        # 파일 경로를 절대 경로로 설정하여 서버 환경에서의 경로 오류 방지
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        csv_path = os.path.join(base_dir, "past_results.csv")
+        
         # 인코딩 호환성을 위해 여러 인코딩 시도
         encodings = ['utf-8-sig', 'cp949', 'euc-kr']
         df = None
         for enc in encodings:
             try:
-                df = pd.read_csv("past_results.csv", header=None, encoding=enc)
+                df = pd.read_csv(csv_path, header=None, encoding=enc)
                 break
             except UnicodeDecodeError:
                 continue
         
         if df is None:
             # 모든 인코딩 실패 시 기본값으로 시도 (에러 발생 유도)
-            df = pd.read_csv("past_results.csv", header=None, encoding='utf-8-sig')
+            df = pd.read_csv(csv_path, header=None, encoding='utf-8-sig')
             
         df.columns = ["회차", "번호1", "번호2", "번호3", "번호4", "번호5", "번호6"]
         df["회차_int"] = df["회차"].str.replace("회차", "").astype(int)
@@ -229,7 +253,9 @@ def update_lotto_data_online():
         return False, f"다운로드한 파일 처리 중 오류가 발생했습니다: {e}"
 
     # 기존 데이터와 비교
-    file_path = "past_results.csv"
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    file_path = os.path.join(base_dir, "past_results.csv")
+    
     latest_old_round = 0
     if os.path.exists(file_path):
         try:
@@ -268,7 +294,7 @@ def tab1_content():
   st.markdown("""
   <div style='background-color:#111; border-radius:20px; padding:10px; text-align:center;'>
     <h2 style='color:gold; font-size:42px;'>🎵 띠별추천번호 생성기</h2>
-    <p style='color:white; font-size:20px;'>본인 띠와 출생 년도로 5조합을 확인하세요</p>
+    <p style='color:white; font-size:20px;'>본인 띠와 출생 년도로 10조합을 확인하세요</p>
   </div>
   """, unsafe_allow_html=True)
   
@@ -290,12 +316,12 @@ def tab1_content():
   selected_zodiac = st.selectbox("띠 선택", list(zodiac_years.keys()), key="zodiac_select")
   selected_year = st.selectbox("출생년도 선택", zodiac_years[selected_zodiac], key="year_select")
   
-  if st.button("행운의 5조합 🎲", key="btn_zodiac5"):
+  if st.button("행운의 10조합 🎲", key="btn_zodiac5"):
     base = selected_year
     all_combinations = []
-    for i in range(5):
+    for i in range(10):
       numbers = []
-      while len(numbers) < 6:
+      while len(numbers) < 10:
         num = (base + random.randint(1,999) + i*1000) % 45 + 1
         if num not in numbers:
           numbers.append(num)
@@ -319,7 +345,7 @@ def tab2_content():
   st.markdown("""
   <div style='background-color:#222; border-radius:20px; padding:10px; text-align:center;'>
     <h2 style='color:deepskyblue; font-size:42px;'>🔮 주역 지역 추천</h2>
-    <p style='color:white; font-size:20px;'>방위 기반 추천을 자동 또는 수동으로 선택하세요 (5조합)</p>
+    <p style='color:white; font-size:20px;'>방위 기반 추천을 자동 또는 수동으로 선택하세요 (10조합)</p>
   </div>
   """, unsafe_allow_html=True)
   
@@ -333,21 +359,25 @@ def tab2_content():
   }
   
   if mode == "자동":
-    if st.button("오늘의 방위 5조합 추천 🎲", key="jx_auto_btn2"):
+    if st.button("오늘의 방위 10조합 추천 🎲", key="jx_auto_btn2"):
+      now = datetime.datetime.now()
+      seed_val = int(now.strftime("%Y%m%d")) # 오늘 날짜를 시드로 고정하여 하루 동안 같은 결과 유지
       all_combinations = []
-      for i in range(5):
-        numbers = [random.choice(region) for region in regions.values()]
-        while len(numbers) < 6:
+      for i in range(10):
+        rng = random.Random(seed_val + i * 1000) # 게임별로 시드 간격을 두어 고유한 조합 생성
+        numbers = [rng.choice(region) for region in regions.values()]
+        while len(numbers) < 10:
           # 중복 방지: 랜덤 추가
-          n = random.randint(1, 45)
+          n = rng.randint(1, 45)
           if n not in numbers:
             numbers.append(n)
-        numbers = numbers[:6]
+        numbers = numbers[:10]
         numbers.sort()
         all_combinations.append(numbers)
       
       st.session_state['tab2_combinations'] = all_combinations
       st.session_state['tab2_show_result'] = True
+      st.success(f"📅 {now.year}년 {now.month}월 {now.day}일의 운세로 생성된 오늘의 고정 번호입니다.")
   else:
     cols = st.columns(4)
     year = cols[0].number_input("년",1900,2100,2025,key="jx_year2")
@@ -355,17 +385,17 @@ def tab2_content():
     day = cols[2].number_input("일",1,31,28,key="jx_day2")
     hour = cols[3].number_input("시",0,23,16,key="jx_hour2")
     
-    if st.button("수동 방위 5조합 추천 🎲", key="jx_manual_btn2"):
+    if st.button("수동 방위 10조합 추천 🎲", key="jx_manual_btn2"):
       all_combinations = []
-      for i in range(5):
+      for i in range(10):
         seed = year+month+day+hour+i*1000
         rng = random.Random(seed)
         numbers = [rng.choice(region) for region in regions.values()]
-        while len(numbers) < 6:
+        while len(numbers) < 10:
           n = rng.randint(1, 45)
           if n not in numbers:
             numbers.append(n)
-        numbers = numbers[:6]
+        numbers = numbers[:10]
         numbers.sort()
         all_combinations.append(numbers)
       
@@ -442,10 +472,11 @@ def tab3_content():
 
   # hot/mid/cold num 표시
   freq_sorted = freq.sort_values(ascending=False)
-  hot_nums = freq_sorted.head(6).index.tolist()
-  cold_nums = freq_sorted.tail(6).index.tolist()
-  mid_start = len(freq_sorted)//2 - 3
-  mid_nums = freq_sorted.iloc[mid_start:mid_start+6].index.tolist() if len(freq_sorted) >= 12 else []
+  hot_nums = freq_sorted.head(10).index.tolist()
+  hot_nums_10 = freq_sorted.head(10).index.tolist()
+  cold_nums = freq_sorted.tail(10).index.tolist()
+  mid_start = max(0, len(freq_sorted)//2 - 5)
+  mid_nums = freq_sorted.iloc[mid_start:mid_start+10].index.tolist() if len(freq_sorted) >= 10 else []
   def balls(nums):
     return generate_lotto_balls_html(nums, size=40, font_size=18, margin="4px")
   
@@ -461,19 +492,19 @@ def tab3_content():
   if not_appeared:
     st.markdown(f"<div style='color:white; margin-top:10px;'><b>미출현 번호</b>: {balls(not_appeared)}</div>", unsafe_allow_html=True)
 
-  # 최다 빈도 6수 추천 기능
+  # 최다 빈도 10수 추천 기능
   st.markdown("---")
-  if st.button("🏆 최다 빈도 6수 조합 추천", key="btn_stat_rec"):
-      if len(hot_nums) >= 6:
-          rec_nums = sorted(hot_nums[:6])
+  if st.button("🏆 최다 빈도 10수 조합 추천", key="btn_stat_rec"):
+      if len(hot_nums_10) >= 10:
+          rec_nums = sorted(hot_nums_10)
           st.markdown(f"""
           <div style='background-color:rgba(255,255,255,0.1); border-radius:15px; padding:20px; text-align:center; margin-top:15px; border:1px solid rgba(255,255,255,0.2);'>
-              <h3 style='color:#ffd700; margin-bottom:15px;'>👑 통계 기반 강력 추천 (Top 6)</h3>
+              <h3 style='color:#ffd700; margin-bottom:15px;'>👑 통계 기반 강력 추천 (Top 10)</h3>
               <div style='display:flex; justify-content:center; gap:10px; flex-wrap:wrap;'>
                   {generate_lotto_balls_html(rec_nums, size=60, font_size=24, use_flex=True)}
               </div>
               <p style='color:#ddd; margin-top:15px; font-size:14px;'>
-                  선택하신 기간 동안 가장 많이 당첨된 번호 6개입니다.
+                  선택하신 기간 동안 가장 많이 당첨된 번호 10개입니다.
               </p>
           </div>
           """, unsafe_allow_html=True)
@@ -620,16 +651,16 @@ def tab4_content():
         if cnt > 2:
             fixed_consecutive_violation = True
     
-    while len(combinations) < 5 and attempt < max_attempts:
+    while len(combinations) < 10 and attempt < max_attempts:
       attempt += 1
       numbers = list(real_fixed)
       available = [n for n in range(1, 46) if n not in excluded_numbers and n not in numbers]
       
-      if len(numbers) + len(available) < 6:
+      if len(numbers) + len(available) < 10:
         break
       
       inner_attempt = 0
-      while len(numbers) < 6:
+      while len(numbers) < 10:
         inner_attempt += 1
         if inner_attempt > 50: # 무한 루프 방지 안전장치
             break
@@ -663,12 +694,12 @@ def tab4_content():
             numbers.pop()
             continue
       
-      if len(numbers) < 6:
+      if len(numbers) < 10:
         continue
       
-      # 홀짝 비율 검증 (2~4개가 홀수)
+      # 홀짝 비율 검증 (10개 중 3~7개가 홀수)
       odd_count = sum(1 for n in numbers if n % 2 == 1)
-      if odd_count < 2 or odd_count > 4:
+      if odd_count < 3 or odd_count > 7:
         continue
       
       # 구간 분포 검증 (5개 구간에 골고루 분포)
@@ -680,13 +711,13 @@ def tab4_content():
         elif n <= 40: zones[3] += 1
         else: zones[4] += 1
       
-      # 특정 구간에 4개 이상 몰리면 제외
-      if max(zones) > 3:
+      # 특정 구간에 5개 이상 몰리면 제외 (10개 기준 완화)
+      if max(zones) > 4:
         continue
       
-      # 번호 합계 검증 (당첨 번호 평균 합계: 115~145)
+      # 번호 합계 검증 (10개 합계 평균 약 230, 범위 150~310)
       total_sum = sum(numbers)
-      if total_sum < 100 or total_sum > 160:
+      if total_sum < 150 or total_sum > 310:
         continue
       
       numbers.sort()
@@ -695,13 +726,13 @@ def tab4_content():
       if numbers not in combinations:
         combinations.append(numbers)
     
-    # 5개 미만이면 부족한 만큼 무작위 추가
-    while len(combinations) < 5:
+    # 10개 미만이면 부족한 만큼 무작위 추가
+    while len(combinations) < 10:
       available_fallback = [n for n in range(1, 46) if n not in excluded_numbers and n not in real_fixed]
-      if len(available_fallback) + len(real_fixed) < 6:
+      if len(available_fallback) + len(real_fixed) < 10:
         break
       
-      needed = 6 - len(real_fixed)
+      needed = 10 - len(real_fixed)
       nums = sorted(real_fixed + random.sample(available_fallback, needed))
       if nums not in combinations:
         combinations.append(nums)
@@ -745,17 +776,21 @@ def tab4_content():
         s = sum(comb)
         if 120 <= s <= 140: score += 20
         elif 100 <= s <= 160: score += 10
+        if 200 <= s <= 260: score += 20 # 10개 합계 기준
+        elif 180 <= s <= 280: score += 10
         
         odd = sum(1 for n in comb if n % 2 == 1)
         if odd == 3: score += 20
         elif odd in [2, 4]: score += 15
+        if odd == 5: score += 20 # 10개 중 절반
+        elif odd in [4, 6]: score += 15
         else: score += 5
         
         # 최종 점수 (최대 99점, 최소 60점 보정)
         total_score = min(99, max(60, w_score + score + (s % 5)))
         
         html_output += f"<p style='color:white; font-weight:bold; margin:15px 0 5px 0;'>🎯 AI 조합 {i+1}</p>"
-        balls_html = generate_lotto_balls_html(comb, size=55, font_size=20, use_flex=True, extra_css="font-weight:bold; box-shadow:0 2px 4px rgba(0,0,0,0.2);")
+        balls_html = generate_lotto_balls_html(comb, size=45, font_size=18, use_flex=True, extra_css="font-weight:bold; box-shadow:0 2px 4px rgba(0,0,0,0.2);")
         
         # 점수 표시 바 (색상 구분: 초록-높음, 주황-중간, 빨강-낮음)
         color = "#00c853" if total_score >= 85 else "#ffa500" if total_score >= 75 else "#ff4b4b"
@@ -779,14 +814,14 @@ def tab4_content():
       
       # --- 이미지 생성 및 다운로드 기능 ---
       def create_combinations_image(combinations):
-          ball_size = 55
+          ball_size = 45 # 10개 배치 위해 사이즈 축소
           padding = 25
           h_spacing = 10
           v_spacing = 25
           title_v_offset = 30
 
           row_height = ball_size + v_spacing + title_v_offset
-          img_width = padding * 2 + 6 * ball_size + 5 * h_spacing
+          img_width = padding * 2 + 10 * ball_size + 9 * h_spacing
           img_height = padding * 2 + len(combinations) * row_height - v_spacing
 
           image = Image.new('RGB', (img_width, img_height), (255, 255, 255))
@@ -822,10 +857,20 @@ def tab4_content():
                   
                   ball_color_name = get_color(num)
                   pillow_ball_color = color_map.get(ball_color_name, (128, 128, 128))
-                  text_color = (0, 0, 0) if ball_color_name == "gold" else (255, 255, 255)
+                  
+                  # 1. 외부 색상 원 그리기
+                  draw.ellipse(box, fill=pillow_ball_color, outline=(180,180,180), width=1)
 
-                  draw.ellipse(box, fill=pillow_ball_color, outline=(200,200,200), width=1)
-
+                  # 2. 내부 흰색 원 그리기 (공 크기의 약 65%)
+                  inner_ratio = 0.65
+                  cx = x_pos + ball_size / 2
+                  cy = y_pos + title_v_offset + ball_size / 2
+                  r = (ball_size * inner_ratio) / 2
+                  inner_box = [cx - r, cy - r, cx + r, cy + r]
+                  draw.ellipse(inner_box, fill=(255, 255, 255), outline=(220, 220, 220), width=1)
+                  
+                  # 3. 숫자 그리기 (항상 검정색)
+                  text_color = (0, 0, 0)
                   num_str = str(num)
                   bbox = draw.textbbox((0, 0), num_str, font=ball_font)
                   text_width, text_height = bbox[2] - bbox[0], bbox[3] - bbox[1]
@@ -909,9 +954,9 @@ def tab4_content():
           - **최근 추세**: 최근 50회 핫 번호 우선 선택 (현재 가중치: {w_t:.0%})
           - **미출현 패턴**: 30회 이상 미출현 번호 우대 (현재 가중치: {w_g:.0%})
           - **구간 균형**: 5개 구간(1-10, 11-20, 21-30, 31-40, 41-45) 균등 분포
-          - **홀짝 비율**: 홀수 2~4개 유지 (최근 300회 평균: {avg_odd:.1f}개)
+          - **홀짝 비율**: 홀수 3~7개 유지 (10개 번호 기준)
           - **연속 번호**: 연속 3개 이상 제외
-          - **번호 합계**: 100~160 범위 (당첨 평균: 120~130)
+          - **번호 합계**: 150~310 범위 (10개 번호 기준)
           - **중복 방지**: 동일 조합 제외
           """)
     else:
@@ -926,6 +971,16 @@ def tab5_content():
   </div>
   """, unsafe_allow_html=True)
 
+  # 반짝이는 애니메이션 CSS 정의
+  st.markdown("""
+  <style>
+  @keyframes blink-effect {
+      0% { transform: scale(1); box-shadow: 0 0 5px gold; }
+      100% { transform: scale(1.15); box-shadow: 0 0 20px #ffd700, 0 0 10px white; }
+  }
+  </style>
+  """, unsafe_allow_html=True)
+
   past_results = load_lotto_data()
   if past_results is None:
       st.error("`past_results.csv` 파일을 찾을 수 없거나 데이터가 손상되었습니다. 앱을 재시작하거나 데이터를 확인해주세요.")
@@ -933,6 +988,7 @@ def tab5_content():
 
   try:
     valid_rounds = past_results["회차_int"].tolist()
+    auto_check = False
     
     # QR 코드 스캔 기능 추가
     with st.expander("📷 QR코드로 번호 스캔 (카메라)"):
@@ -959,6 +1015,7 @@ def tab5_content():
                        scanned_round = int(round_part)
                        if scanned_round in valid_rounds:
                          st.session_state["check_round_select"] = scanned_round
+                         auto_check = True
                        else:
                          st.warning(f"스캔된 {scanned_round}회차 데이터가 아직 없습니다.")
                      except:
@@ -1044,7 +1101,7 @@ def tab5_content():
       val = st.text_input(f"게임 {i+1}", placeholder="예: 1, 2, 3, 4, 5, 6", key=f"check_g{i}")
       user_inputs.append(val)
     
-    if st.button("결과 확인", key="btn_check_win", type="primary"):
+    if st.button("결과 확인", key="btn_check_win", type="primary") or auto_check:
       st.markdown("### 🕵️‍♂️ 확인 결과")
       for idx, val in enumerate(user_inputs):
         if not val.strip():
@@ -1056,6 +1113,8 @@ def tab5_content():
           
           if len(my_nums) != 6:
             st.warning(f"게임 {idx+1}: 6개의 숫자를 입력해주세요.")
+          if len(my_nums) < 6:
+            st.warning(f"게임 {idx+1}: 6개 이상의 숫자를 입력해주세요.")
             continue
             
           my_nums.sort()
@@ -1070,10 +1129,12 @@ def tab5_content():
             rank_str = "🥇 1등 당첨!!"
             bg_color = "#fff5e6"
             border_color = "gold"
+            st.balloons() # 1등 축하 효과
           elif match_count == 5:
             rank_str = "🥉 3등 당첨!! (보너스 제외)"
             bg_color = "#e6f7ff"
             border_color = "dodgerblue"
+            st.snow() # 3등 축하 효과
           elif match_count == 4:
             rank_str = "💵 4등 당첨"
             bg_color = "#e6ffe6"
@@ -1084,7 +1145,7 @@ def tab5_content():
             border_color = "salmon"
           
           opacity_map = {n: (1.0 if n in winning_numbers else 0.2) for n in my_nums}
-          my_nums_html = generate_lotto_balls_html(my_nums, size=30, font_size=14, opacity_map=opacity_map)
+          my_nums_html = generate_lotto_balls_html(my_nums, size=30, font_size=14, opacity_map=opacity_map, highlight_nums=matched)
           
           st.markdown(f"""
           <div style='border:2px solid {border_color}; background-color:{bg_color}; border-radius:10px; padding:10px; margin-bottom:10px; display:flex; align-items:center; justify-content:space-between;'>
@@ -1136,11 +1197,17 @@ def render_header():
         past_results = load_lotto_data()
         if past_results is not None:
             # 자동으로 다음 회차 계산
-            next_draw_round = past_results["회차_int"].max() + 1
+            next_draw_round = int(past_results["회차_int"].max()) + 1
         else:
             next_draw_round = 1209  # 파일 로드 실패 시 기본값
     except Exception:
         next_draw_round = 1209  # 파일 로드 실패 시 기본값
+
+    # 다음 회차 추첨일 계산 (1회차: 2002-12-07 기준)
+    # 공식: 기준일 + (회차-1) * 7일
+    base_date = datetime.datetime(2002, 12, 7)
+    next_draw_date = base_date + datetime.timedelta(days=(next_draw_round - 1) * 7)
+    next_date_str = next_draw_date.strftime("%Y-%m-%d")
 
     # '좋아요' 링크 생성
     try:
@@ -1171,10 +1238,10 @@ def render_header():
                 <a href="{subscribe_url}" target="_self" style="{sub_style}">{sub_label}</a>
             </div>
             <div class="header-center">
-                😘 로또킹과 더 높은 곳을 향하여 🚀
+                ✨ 로또킹 PRO 2.0 (10조합 업데이트) 🚀
             </div>
             <div class="header-right">
-                추첨회차: 제 {next_draw_round}회 (자동)
+                추첨회차: 제 {next_draw_round}회 ({next_date_str})
             </div>
         </div>
     """, unsafe_allow_html=True)
@@ -1208,8 +1275,8 @@ def render_sidebar():
             </div>
             <div class="nav-card">
                 <a href="/?tab=tab4" target="_self">
-                    <span class="emoji"></span>
-                    AI 통합 추천
+                    <span class="emoji">🧠</span>
+                    AI 통합 추천 <span style='background:#ff4b4b; color:white; font-size:10px; padding:2px 5px; border-radius:5px; vertical-align:middle;'>UP</span>
                 </a>
             </div>
             <div class="nav-card">
@@ -1263,9 +1330,25 @@ def render_main_content():
         <div style='text-align:center; color:white; text-shadow: 2px 2px 4px rgba(0,0,0,0.8); min-height:60vh; display:flex; flex-direction:column; justify-content:center; align-items:center;'>
             <h2 class="typing-text" style='color:white; margin-bottom: 10px;'>로또킹 AI 분석</h2>
             <p style='color:white; font-size: 18px;'>왼쪽 메뉴에서 원하시는 번호 생성 방식을 선택하세요.</p>
+            
+            <!-- 업데이트 알림 카드 -->
+            <div style='background:rgba(0,0,0,0.6); padding:20px; border-radius:15px; margin-top:30px; border:1px solid gold; max-width:500px; box-shadow: 0 0 15px rgba(255, 215, 0, 0.3);'>
+                <h3 style='color:gold; margin:0 0 15px 0; font-size:22px;'>🎉 업데이트 소식 (Ver 2.0)</h3>
+                <ul style='text-align:left; color:#eee; font-size:16px; line-height:1.8; list-style-type: none; padding: 0; margin: 0;'>
+                    <li>💎 <b>10조합 확장:</b> 당첨 확률 UP! (6개 → 10개)</li>
+                    <li>🎱 <b>3D 리얼 볼:</b> 입체감 있는 프리미엄 디자인</li>
+                    <li>✨ <b>시각 효과:</b> 당첨 번호 반짝임 & 축하 효과</li>
+                    <li>📷 <b>QR 스캔:</b> 지난 회차 자동 결과 확인</li>
+                </ul>
+            </div>
+            
             <p class='pointing-finger'>👈</p>
         </div>
         """, unsafe_allow_html=True)
+        
+        if 'update_toast_shown' not in st.session_state:
+            st.toast("🚀 로또킹 PRO 2.0 업데이트 완료! 새로운 10조합 기능을 확인하세요!", icon="🎉")
+            st.session_state['update_toast_shown'] = True
 
 def get_image_as_base64(path):
     if not os.path.exists(path):
@@ -1578,6 +1661,16 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # --- 2단 레이아웃 생성 ---
+
+# 앱 시작 시 최신 데이터 자동 업데이트 (세션당 1회 실행)
+if 'data_updated' not in st.session_state:
+    # 화면 로딩 중에 스피너 표시
+    with st.spinner('최신 로또 당첨 정보를 동기화 중입니다...'):
+        success, msg = update_lotto_data_online()
+        if success:
+             st.toast(msg, icon="✅")
+        # 실패하더라도 기존 csv 파일로 구동되므로 에러는 toast로만 알림
+    st.session_state['data_updated'] = True
 
 render_header()
 
