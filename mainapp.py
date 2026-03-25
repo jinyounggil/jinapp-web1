@@ -1193,19 +1193,27 @@ def play_bgm():
 
 def render_header():
     """ Renders the custom top header for the app. """
-    try:
-        past_results = load_lotto_data()
-        if past_results is not None:
-            # 자동으로 다음 회차 계산
-            next_draw_round = int(past_results["회차_int"].max()) + 1
-        else:
-            next_draw_round = 1209  # 파일 로드 실패 시 기본값
-    except Exception:
-        next_draw_round = 1209  # 파일 로드 실패 시 기본값
+    # 데이터 파일 의존성을 제거하고, 현재 시간 기준으로 다음 회차를 계산합니다.
+    # 1회차 기준: 2002년 12월 7일 토요일 (추첨 시간 대략 20:40)
+    base_date = datetime.datetime(2002, 12, 7, 20, 40, 0)
+    
+    # 한국 시간(KST) 보정 (Streamlit Cloud는 UTC 기준일 수 있음)
+    utc_now = datetime.datetime.utcnow()
+    kst_now = utc_now + datetime.timedelta(hours=9)
+    
+    # 기준일로부터 경과한 시간 계산
+    time_diff = kst_now - base_date
+    weeks_passed = time_diff.days // 7
+    
+    # 이번 주 토요일 추첨일(기준일 + 경과주수 * 7일)
+    upcoming_draw_date = base_date + datetime.timedelta(days=weeks_passed * 7)
+    
+    # 현재 시간이 이번 주 추첨 시간을 지났으면 '다음 주'가 다음 회차, 안 지났으면 '이번 주'가 다음 회차
+    if kst_now > upcoming_draw_date:
+        next_draw_round = (weeks_passed + 1) + 1 # 1회차부터 시작하므로 +1, 다음주니까 +1
+    else:
+        next_draw_round = weeks_passed + 1
 
-    # 다음 회차 추첨일 계산 (1회차: 2002-12-07 기준)
-    # 공식: 기준일 + (회차-1) * 7일
-    base_date = datetime.datetime(2002, 12, 7)
     next_draw_date = base_date + datetime.timedelta(days=(next_draw_round - 1) * 7)
     next_date_str = next_draw_date.strftime("%Y-%m-%d")
 
@@ -1213,7 +1221,7 @@ def render_header():
     try:
         current_params = st.query_params.to_dict()
         like_params = current_params.copy()
-        like_params['action'] = 'like'
+        like_params['action'] = 'like's
         like_url = f"?{urllib.parse.urlencode(like_params)}"
     except Exception:
         like_url = "?action=like" # Fallback
