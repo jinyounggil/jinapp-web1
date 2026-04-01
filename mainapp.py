@@ -22,7 +22,7 @@ import platform
 import uuid
 
 # 페이지 설정 (가장 먼저 호출)
-st.set_page_config(layout="wide", page_title="로또킹 분석", initial_sidebar_state="collapsed")
+st.set_page_config(layout="centered", page_title="로또킹 분석", initial_sidebar_state="collapsed")
 
 # Query-Parameter를 이용한 탭 관리
 if 'show_tab' not in st.session_state:
@@ -103,8 +103,10 @@ if not st.session_state['is_subscribed']:
     <script>
         if (localStorage.getItem('lotto_subscribed') === 'true') {
             const params = new URLSearchParams(window.location.search);
-            if (!params.has('action')) {
-                window.location.href = "?action=restore_subscribe";
+            if (params.get('action') !== 'restore_subscribe') {
+                params.set('action', 'restore_subscribe');
+                const newUrl = window.location.pathname + '?' + params.toString();
+                window.location.href = newUrl;
             }
         }
     </script>
@@ -125,8 +127,10 @@ if not st.session_state['update_dismissed']:
     <script>
         if (localStorage.getItem('lotto_update_dismissed') === 'true') {
             const params = new URLSearchParams(window.location.search);
-            if (!params.has('action')) {
-                window.location.href = "?action=restore_update_dismissed";
+            if (params.get('action') !== 'restore_update_dismissed') {
+                params.set('action', 'restore_update_dismissed');
+                const newUrl = window.location.pathname + '?' + params.toString();
+                window.location.href = newUrl;
             }
         }
     </script>
@@ -1424,14 +1428,11 @@ def render_main_content():
             
             <!-- 업데이트 알림 카드 -->
             {f'''
-            <div class="update-card" style="text-align: left;">
-                <a href="{dismiss_url}" 
             <div class="update-card" style="text-align: left; position: relative;">
-                <a href="{dismiss_url}" target="_self"
+                <a href="{dismiss_url}" target="_self" 
                    onclick="localStorage.setItem('lotto_update_dismissed', 'true');" 
-                   style="position: absolute; top: 10px; right: 15px; color: #ff4b4b !important; text-decoration: none; font-size: 28px; font-weight: bold; cursor: pointer; z-index: 9999; line-height: 1;">×</a>
-                   style="position: absolute; top: -10px; right: -10px; background: #ff4b4b; color: white !important; 
-                          text-decoration: none; font-size: 20px; width: 35px; height: 35px; display: flex; 
+                   style="position: absolute; top: 10px; right: 10px; background: #ff4b4b; color: white !important; 
+                          text-decoration: none; font-size: 18px; width: 30px; height: 30px; display: flex; 
                           align-items: center; justify-content: center; border-radius: 50%; border: 2px solid white; 
                           box-shadow: 0 2px 10px rgba(0,0,0,0.5); z-index: 10000; cursor: pointer;">✕</a>
                 <h3>🎉 업데이트 소식 (Ver 2.0)</h3>
