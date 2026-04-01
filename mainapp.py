@@ -38,6 +38,8 @@ if 'like_count' not in st.session_state:
     st.session_state['like_count'] = 0
 if 'is_subscribed' not in st.session_state:
     st.session_state['is_subscribed'] = False
+if 'update_dismissed' not in st.session_state:
+    st.session_state['update_dismissed'] = False
 
 # '좋아요' 및 '구독' 클릭 처리 (인터랙티브 효과 추가)
 try:
@@ -45,6 +47,19 @@ try:
     
     if action == "restore_subscribe":
         st.session_state['is_subscribed'] = True
+        if "action" in st.query_params:
+            del st.query_params["action"]
+        st.rerun()
+
+    elif action == "restore_update_dismissed":
+        st.session_state['update_dismissed'] = True
+        if "action" in st.query_params:
+            del st.query_params["action"]
+        st.rerun()
+
+    elif action == "dismiss_update":
+        st.session_state['update_dismissed'] = True
+        st.markdown("<script>localStorage.setItem('lotto_update_dismissed', 'true');</script>", unsafe_allow_html=True)
         if "action" in st.query_params:
             del st.query_params["action"]
         st.rerun()
@@ -90,6 +105,19 @@ if not st.session_state['is_subscribed']:
             const params = new URLSearchParams(window.location.search);
             if (!params.has('action')) {
                 window.location.href = "?action=restore_subscribe";
+            }
+        }
+    </script>
+    """, unsafe_allow_html=True)
+
+# 알림창 닫기 상태 복원 스크립트
+if not st.session_state['update_dismissed']:
+    st.markdown("""
+    <script>
+        if (localStorage.getItem('lotto_update_dismissed') === 'true') {
+            const params = new URLSearchParams(window.location.search);
+            if (!params.has('action')) {
+                window.location.href = "?action=restore_update_dismissed";
             }
         }
     </script>
@@ -151,31 +179,63 @@ def generate_lotto_balls_html(numbers, size, font_size, margin="2px", use_flex=F
 def load_lotto_data():
     """
     과거 로또 당첨 데이터를 CSV 파일에서 로드하고 전처리합니다. 오류 발생 시 None을 반환합니다.
-    데이터는 캐시되어 앱 성능을 향상시킵니다.
+    '추천회차.csv'와 'past_results.csv' 중 더 최신 회차가 있는 데이터를 자동으로 선택합니다.
     """
     try:
         # 파일 경로를 절대 경로로 설정하여 서버 환경에서의 경로 오류 방지
         base_dir = os.path.dirname(os.path.abspath(__file__))
-        csv_path = os.path.join(base_dir, "past_results.csv")
+        
+        # 확인해볼 파일 후보군
+        candidate_files = ["추천회차.csv", "past_results.csv"]
         
         # 인코딩 호환성을 위해 여러 인코딩 시도
         encodings = ['utf-8-sig', 'cp949', 'euc-kr']
-        df = None
-        for enc in encodings:
-            try:
-                df = pd.read_csv(csv_path, header=None, encoding=enc)
-                break
-            except UnicodeDecodeError:
-                continue
         
-        if df is None:
-            # 모든 인코딩 실패 시 기본값으로 시도 (에러 발생 유도)
-            df = pd.read_csv(csv_path, header=None, encoding='utf-8-sig')
+        best_df = None
+        max_round = -1
+        
+        for fname in candidate_files:
+            csv_path = os.path.join(base_dir, fname)
+            if not os.path.exists(csv_path):
+                continue
             
-        df.columns = ["회차", "번호1", "번호2", "번호3", "번호4", "번호5", "번호6"]
-        df["회차_int"] = df["회차"].str.replace("회차", "").astype(int)
-        df = df.sort_values("회차_int", ascending=False)
-        return df
+            current_df = None
+            for enc in encodings:
+                try:
+                    # CSV 읽기 (헤더 없음)
+                    temp_df = pd.read_csv(csv_path, header=None, encoding=enc)
+                    
+                    # 열 개수 체크 (최소 7개: 회차 + 번호 6개)
+                    if temp_df.shape[1] < 7:
+                        continue
+                        
+                    # 8열(보너스 포함)이어도 앞의 7열만 사용
+                    temp_df = temp_df.iloc[:, :7]
+                    temp_df.columns = ["회차", "번호1", "번호2", "번호3", "번호4", "번호5", "번호6"]
+                    
+                    # 회차에서 숫자만 추출 (예: '1216회차' -> 1216)
+                    try:
+                        temp_df["회차_int"] = temp_df["회차"].astype(str).str.replace(r'\D+', '', regex=True).astype(int)
+                    except:
+                        continue
+                        
+                    current_df = temp_df
+                    break
+                except Exception:
+                    continue
+            
+            # 로드 성공 시, 가장 높은 회차인지 비교
+            if current_df is not None and not current_df.empty:
+                current_max = current_df["회차_int"].max()
+                if current_max > max_round:
+                    max_round = current_max
+                    best_df = current_df
+
+        if best_df is not None:
+            return best_df.sort_values("회차_int", ascending=False)
+        else:
+            return None
+
     except (FileNotFoundError, Exception) as e:
         # st.error() 호출을 제거하여 앱 시작 시 레이아웃이 깨지는 것을 방지합니다.
         # 오류 처리는 이 함수를 호출하는 각 UI 섹션에서 담당합니다.
@@ -1326,6 +1386,16 @@ def render_sidebar():
 def render_main_content():
     """ Renders the content for the right main area. """
     show_tab = st.session_state.get('show_tab')
+
+    # 닫기 버튼을 위한 URL 생성
+    try:
+        current_params = st.query_params.to_dict()
+        dismiss_params = current_params.copy()
+        dismiss_params['action'] = 'dismiss_update'
+        dismiss_url = f"?{urllib.parse.urlencode(dismiss_params)}"
+    except Exception:
+        dismiss_url = "?action=dismiss_update"
+
     if show_tab:
         if st.button("🏠 메인 화면으로", key="btn_return_home"):
             st.query_params.clear()
@@ -1337,43 +1407,26 @@ def render_main_content():
         elif show_tab == 'tab4': tab4_content()
         elif show_tab == 'tab5': tab5_content()
     else:
-        st.markdown("""
-        <style>
-            @keyframes typing {
-              from { width: 0 }
-              to { width: 100% }
-            }
-            @keyframes blink-caret {
-              from, to { border-color: transparent }
-              50% { border-color: #ffd700; }
-            }
-            .typing-text {
-                display: inline-block;
-                overflow: hidden;
-                border-right: .1em solid #ffd700;
-                white-space: nowrap;
-                margin: 0 auto;
-                letter-spacing: 0.1em;
-                animation: 
-                    typing 2s steps(20, end),
-                    blink-caret .75s step-end 3 forwards;
-                max-width: fit-content;
-            }
-        </style>
+        st.markdown(f"""
         <div style='text-align:center; color:white; text-shadow: 2px 2px 4px rgba(0,0,0,0.8); min-height:60vh; display:flex; flex-direction:column; justify-content:center; align-items:center;'>
             <h2 class="typing-text" style='color:white; margin-bottom: 10px;'>로또킹 AI 분석</h2>
             <p style='color:white; font-size: 18px;'>왼쪽 메뉴에서 원하시는 번호 생성 방식을 선택하세요.</p>
             
             <!-- 업데이트 알림 카드 -->
-            <div style='background:rgba(0,0,0,0.6); padding:20px; border-radius:15px; margin-top:30px; border:1px solid gold; max-width:500px; box-shadow: 0 0 15px rgba(255, 215, 0, 0.3);'>
-                <h3 style='color:gold; margin:0 0 15px 0; font-size:22px;'>🎉 업데이트 소식 (Ver 2.0)</h3>
-                <ul style='text-align:left; color:#eee; font-size:16px; line-height:1.8; list-style-type: none; padding: 0; margin: 0;'>
+            {f'''
+            <div class="update-card">
+                <h3>🎉 업데이트 소식 (Ver 2.0)</h3>
+                <ul>
                     <li>💎 <b>10조합 확장:</b> 당첨 확률 UP! (6개 → 10개)</li>
                     <li>🎱 <b>3D 리얼 볼:</b> 입체감 있는 프리미엄 디자인</li>
                     <li>✨ <b>시각 효과:</b> 당첨 번호 반짝임 & 축하 효과</li>
                     <li>📷 <b>QR 스캔:</b> 지난 회차 자동 결과 확인</li>
                 </ul>
+                <div style="text-align:right; margin-top:10px;">
+                    <a href="{dismiss_url}" target="_self" style="color: #aaa; text-decoration: none; font-size: 13px; border: 1px solid #555; padding: 2px 8px; border-radius: 5px;">닫기 ✕</a>
+                </div>
             </div>
+            ''' if not st.session_state.get('update_dismissed') else ""}
             
             <p class='pointing-finger'>👈</p>
         </div>
@@ -1496,6 +1549,53 @@ st.markdown(f"""
         font-size: 5rem;
         animation: point-left 1.5s infinite ease-in-out;
         display: inline-block;
+    }}
+
+    /* --- 타이핑 애니메이션 --- */
+    @keyframes typing {{
+      from {{ width: 0 }}
+      to {{ width: 100% }}
+    }}
+    @keyframes blink-caret {{
+      from, to {{ border-color: transparent }}
+      50% {{ border-color: #ffd700; }}
+    }}
+    .typing-text {{
+        display: inline-block;
+        overflow: hidden;
+        border-right: .1em solid #ffd700;
+        white-space: nowrap;
+        margin: 0 auto;
+        letter-spacing: 0.1em;
+        animation:
+            typing 2s steps(20, end),
+            blink-caret .75s step-end 3 forwards;
+        max-width: fit-content;
+    }}
+
+    /* --- 업데이트 소식 카드 --- */
+    .update-card {{
+        background: rgba(0,0,0,0.6);
+        padding: 20px;
+        border-radius: 15px;
+        margin-top: 30px;
+        border: 1px solid gold;
+        max-width: 500px;
+        box-shadow: 0 0 15px rgba(255, 215, 0, 0.3);
+    }}
+    .update-card h3 {{
+        color: gold;
+        margin: 0 0 15px 0;
+        font-size: 22px;
+    }}
+    .update-card ul {{
+        text-align: left;
+        color: #eee;
+        font-size: 16px;
+        line-height: 1.8;
+        list-style-type: none;
+        padding: 0;
+        margin: 0;
     }}
 
     {st_app_style}

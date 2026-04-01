@@ -1,49 +1,16 @@
-# Python
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
-*.so
-.Python
-env/
+
+# Environments
+.venv
 venv/
-.venv/
-ENV/
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
+env/
 
-# IDEs
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
+# Streamlit
+.streamlit/
 
-# OS
+# OS generated files
 .DS_Store
 Thumbs.db
-
-# Database
-*.db
-*.sqlite
-
-# Excel files
-*.xlsm
-*.xlsx
-*.xls
-
-# Temporary files
-*.log
-*.tmp
