@@ -59,7 +59,6 @@ try:
 
     elif action == "dismiss_update":
         st.session_state['update_dismissed'] = True
-        st.markdown("<script>localStorage.setItem('lotto_update_dismissed', 'true');</script>", unsafe_allow_html=True)
         if "action" in st.query_params:
             del st.query_params["action"]
         st.rerun()
@@ -103,12 +102,24 @@ if not st.session_state['is_subscribed']:
     <script>
         if (localStorage.getItem('lotto_subscribed') === 'true') {
             const params = new URLSearchParams(window.location.search);
-            if (!params.has('action')) {
-                window.location.href = "?action=restore_subscribe";
+            if (params.get('action') !== 'restore_subscribe') {
+                params.set('action', 'restore_subscribe');
+                const newUrl = window.location.pathname + '?' + params.toString();
+                window.history.replaceState({}, '', newUrl);
+                window.location.href = newUrl;
             }
         }
     </script>
     """, unsafe_allow_html=True)
+
+# 알림창 즉시 숨김을 위한 CSS 가드 (깜빡임 방지)
+st.markdown("""
+<script>
+    if (localStorage.getItem('lotto_update_dismissed') === 'true') {
+        document.write('<style>.update-card { display: none !important; }</style>');
+    }
+</script>
+""", unsafe_allow_html=True)
 
 # 알림창 닫기 상태 복원 스크립트
 if not st.session_state['update_dismissed']:
@@ -116,8 +127,11 @@ if not st.session_state['update_dismissed']:
     <script>
         if (localStorage.getItem('lotto_update_dismissed') === 'true') {
             const params = new URLSearchParams(window.location.search);
-            if (!params.has('action')) {
-                window.location.href = "?action=restore_update_dismissed";
+            if (params.get('action') !== 'restore_update_dismissed') {
+                params.set('action', 'restore_update_dismissed');
+                const newUrl = window.location.pathname + '?' + params.toString();
+                window.history.replaceState({}, '', newUrl);
+                window.location.href = newUrl;
             }
         }
     </script>
@@ -350,7 +364,8 @@ def get_next_round_info():
     1회차 기준: 2002년 12월 7일(토) 20:40
     """
     base_date = datetime.datetime(2002, 12, 7, 20, 40, 0)
-    utc_now = datetime.datetime.utcnow()
+    # DeprecationWarning 해결: timezone-aware 객체 생성 후 계산을 위해 naive로 변환
+    utc_now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
     kst_now = utc_now + datetime.timedelta(hours=9)
     
     # 기준일로부터 경과한 시간
@@ -1414,7 +1429,9 @@ def render_main_content():
             
             <!-- 업데이트 알림 카드 -->
             {f'''
-            <div class="update-card">
+            <div class="update-card" style="position: relative;">
+                <a href="{dismiss_url}" onclick="localStorage.setItem('lotto_update_dismissed', 'true');" target="_self" 
+                   style="position: absolute; top: 10px; right: 15px; color: gold; text-decoration: none; font-size: 20px; font-weight: bold; cursor: pointer;">✕</a>
                 <h3>🎉 업데이트 소식 (Ver 2.0)</h3>
                 <ul>
                     <li>💎 <b>10조합 확장:</b> 당첨 확률 UP! (6개 → 10개)</li>
@@ -1422,9 +1439,6 @@ def render_main_content():
                     <li>✨ <b>시각 효과:</b> 당첨 번호 반짝임 & 축하 효과</li>
                     <li>📷 <b>QR 스캔:</b> 지난 회차 자동 결과 확인</li>
                 </ul>
-                <div style="text-align:right; margin-top:10px;">
-                    <a href="{dismiss_url}" onclick="localStorage.setItem('lotto_update_dismissed', 'true');" target="_self" style="color: #aaa; text-decoration: none; font-size: 13px; border: 1px solid #555; padding: 2px 8px; border-radius: 5px;">닫기 ✕</a>
-                </div>
             </div>
             ''' if not st.session_state.get('update_dismissed') else ""}
             
