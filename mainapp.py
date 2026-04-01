@@ -19,6 +19,7 @@ import numpy as np
 import re
 from bs4 import BeautifulSoup
 import platform
+import urllib3
 import uuid
 
 # 페이지 설정 (가장 먼저 호출)
@@ -96,6 +97,9 @@ try:
 except Exception:
     # st.query_params가 지원되지 않는 환경 등 예외 처리
     pass
+
+# SSL 인증서 검증 경고를 무시하고 싶은 경우 아래 주석을 해제하세요.
+# urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # 브라우저 로컬 스토리지 상태 확인 및 CSS 가드
 st.markdown("""
@@ -251,7 +255,8 @@ def update_lotto_data_online():
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8'
     }
     try:
-        response = requests.get(url, timeout=15, headers=headers, verify=False) # SSL 검증 우회
+        # SSL 검증을 활성화하여 보안 경고(InsecureRequestWarning)를 해결합니다.
+        response = requests.get(url, timeout=15, headers=headers, verify=True)
         response.raise_for_status()
     except requests.exceptions.RequestException as e:
         return False, f"데이터 다운로드에 실패했습니다: {e}"
