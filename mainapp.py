@@ -59,6 +59,7 @@ try:
 
     elif action == "dismiss_update":
         st.session_state['update_dismissed'] = True
+        st.markdown("<script>localStorage.setItem('lotto_update_dismissed', 'true');</script>", unsafe_allow_html=True)
         if "action" in st.query_params:
             del st.query_params["action"]
         st.rerun()
@@ -96,33 +97,13 @@ except Exception:
     # st.query_params가 지원되지 않는 환경 등 예외 처리
     pass
 
-# 브라우저 로컬 스토리지 상태 통합 복원 및 CSS 가드
-st.markdown(f"""
+# 브라우저 로컬 스토리지 상태 확인 및 CSS 가드
+st.markdown("""
 <script>
-    // 1. CSS 가드: 페이지 로드 즉시 알림창 숨기기
-    if (localStorage.getItem('lotto_update_dismissed') === 'true') {{
-        document.write('<style>.update-card {{ display: none !important; }}</style>');
-    }}
-
-    // 2. 상태 동기화: 로컬 스토리지 값을 Python 세션으로 전달
-    const params = new URLSearchParams(window.location.search);
-    let actionTriggered = false;
-
-    if (localStorage.getItem('lotto_subscribed') === 'true' && !{str(st.session_state['is_subscribed']).lower()}) {{
-        if (params.get('action') !== 'restore_subscribe') {{
-            params.set('action', 'restore_subscribe');
-            actionTriggered = true;
-        }}
-    }} else if (localStorage.getItem('lotto_update_dismissed') === 'true' && !{str(st.session_state['update_dismissed']).lower()}) {{
-        if (params.get('action') !== 'restore_update_dismissed') {{
-            params.set('action', 'restore_update_dismissed');
-            actionTriggered = true;
-        }}
-    }}
-
-    if (actionTriggered) {{
-        window.location.href = window.location.pathname + '?' + params.toString();
-    }}
+    // 사용자가 이미 닫았다면 CSS를 주입해 알림창을 즉시 제거합니다 (깜빡임 방지)
+    if (localStorage.getItem('lotto_update_dismissed') === 'true') {
+        document.write('<style>.update-card { display: none !important; }</style>');
+    }
 </script>
 """, unsafe_allow_html=True)
 
@@ -1418,11 +1399,11 @@ def render_main_content():
             
             <!-- 업데이트 알림 카드 -->
             {f'''
-            <div class="update-card" style="text-align: left; position: relative; overflow: visible;">
-                <a href="{dismiss_url}" target="_self"
+            <div class="update-card" style="text-align: left; position: relative; display: block !important;">
+                <a href="{dismiss_url}" target="_self" 
                    onclick="localStorage.setItem('lotto_update_dismissed', 'true');" 
-                   style="position: absolute; top: 8px; right: 8px; background: #ff4b4b; color: white !important; 
-                          text-decoration: none; font-size: 16px; width: 28px; height: 28px; display: flex; 
+                   style="position: absolute; top: 10px; right: 10px; background: #ff4b4b; color: white !important; 
+                          text-decoration: none; font-size: 18px; width: 32px; height: 32px; display: flex !important; 
                           align-items: center; justify-content: center; border-radius: 50%; border: 2px solid white; 
                           box-shadow: 0 2px 10px rgba(0,0,0,0.5); z-index: 10000; cursor: pointer;">✕</a>
                 <h3>🎉 업데이트 소식 (Ver 2.0)</h3>
