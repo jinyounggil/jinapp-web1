@@ -39,10 +39,16 @@ if 'like_count' not in st.session_state:
     st.session_state['like_count'] = 0
 if 'is_subscribed' not in st.session_state:
     st.session_state['is_subscribed'] = False
-if 'update_dismissed' not in st.session_state:
-    st.session_state['update_dismissed'] = False
 
 # '좋아요' 및 '구독' 클릭 처리 (인터랙티브 효과 추가)
+# URL 액션 처리를 최상단으로 이동하여 중복 실행 방지
+if 'update_dismissed' not in st.session_state:
+    # 쿼리 파라미터나 세션에 닫기 기록이 있는지 확인
+    if st.query_params.get("action") == "restore_update_dismissed":
+        st.session_state['update_dismissed'] = True
+    else:
+        st.session_state['update_dismissed'] = False
+
 try:
     action = st.query_params.get("action")
     
@@ -54,9 +60,7 @@ try:
 
     elif action == "restore_update_dismissed":
         st.session_state['update_dismissed'] = True
-        if "action" in st.query_params:
-            del st.query_params["action"]
-        st.rerun()
+        # 리다이렉트 없이 진행
 
     elif action == "dismiss_update":
         st.session_state['update_dismissed'] = True
@@ -104,10 +108,19 @@ except Exception:
 # 브라우저 로컬 스토리지 상태 확인 및 CSS 가드
 st.markdown("""
 <script>
-    // 사용자가 이미 닫았다면 CSS를 주입해 알림창을 즉시 제거합니다 (깜빡임 방지)
-    if (localStorage.getItem('lotto_update_dismissed') === 'true') {
-        document.write('<style>.update-card { display: none !important; }</style>');
-    }
+    (function() {
+        // 1. 이미 닫았다면 즉시 숨김
+        if (localStorage.getItem('lotto_update_dismissed') === 'true') {
+            document.write('<style>.update-card { display: none !important; }</style>');
+            
+            // 2. 파이썬 세션과 동기화가 안 되어 있다면 액션 호출
+            const params = new URLSearchParams(window.location.search);
+            if (params.get('action') !== 'restore_update_dismissed') {
+                params.set('action', 'restore_update_dismissed');
+                window.location.search = params.toString();
+            }
+        }
+    })();
 </script>
 """, unsafe_allow_html=True)
 
@@ -237,7 +250,7 @@ def display_combinations_result(show_result_key, combinations_key):
         if st.session_state.get(show_result_key) and st.session_state.get(combinations_key):
             html_output = "<div style='display:flex;flex-direction:column;align-items:center; margin-top:20px;'>"
             for comb in st.session_state[combinations_key]:
-                html_output += f"<div style='margin:10px 0;'>{generate_lotto_balls_html(comb, size=60, font_size=22)}</div>"
+                html_output += f"<div style='margin:10px 0;'>{generate_lotto_balls_html(comb, size=45, font_size=18)}</div>"
             html_output += "</div>"
             st.markdown(html_output, unsafe_allow_html=True)
 
@@ -392,12 +405,12 @@ def tab1_content():
   selected_zodiac = st.selectbox("띠 선택", list(zodiac_years.keys()), key="zodiac_select")
   selected_year = st.selectbox("출생년도 선택", zodiac_years[selected_zodiac], key="year_select")
   
-  if st.button("행운의 10조합 🎲", key="btn_zodiac5"):
+  if st.button("행운의 2조합 🎲", key="btn_zodiac5"):
     base = selected_year
     all_combinations = []
-    for i in range(10):
+    for i in range(2):
       numbers = []
-      while len(numbers) < 10:
+      while len(numbers) < 12:
         num = (base + random.randint(1,999) + i*1000) % 45 + 1
         if num not in numbers:
           numbers.append(num)
@@ -435,19 +448,19 @@ def tab2_content():
   }
   
   if mode == "자동":
-    if st.button("오늘의 방위 10조합 추천 🎲", key="jx_auto_btn2"):
+    if st.button("오늘의 방위 2조합 추천 🎲", key="jx_auto_btn2"):
       now = datetime.datetime.now()
       seed_val = int(now.strftime("%Y%m%d")) # 오늘 날짜를 시드로 고정하여 하루 동안 같은 결과 유지
       all_combinations = []
-      for i in range(10):
+      for i in range(2):
         rng = random.Random(seed_val + i * 1000) # 게임별로 시드 간격을 두어 고유한 조합 생성
         numbers = [rng.choice(region) for region in regions.values()]
-        while len(numbers) < 10:
+        while len(numbers) < 12:
           # 중복 방지: 랜덤 추가
           n = rng.randint(1, 45)
           if n not in numbers:
             numbers.append(n)
-        numbers = numbers[:10]
+        numbers = numbers[:12]
         numbers.sort()
         all_combinations.append(numbers)
       
@@ -461,17 +474,17 @@ def tab2_content():
     day = cols[2].number_input("일",1,31,28,key="jx_day2")
     hour = cols[3].number_input("시",0,23,16,key="jx_hour2")
     
-    if st.button("수동 방위 10조합 추천 🎲", key="jx_manual_btn2"):
+    if st.button("수동 방위 2조합 추천 🎲", key="jx_manual_btn2"):
       all_combinations = []
-      for i in range(10):
+      for i in range(2):
         seed = year+month+day+hour+i*1000
         rng = random.Random(seed)
         numbers = [rng.choice(region) for region in regions.values()]
-        while len(numbers) < 10:
+        while len(numbers) < 12:
           n = rng.randint(1, 45)
           if n not in numbers:
             numbers.append(n)
-        numbers = numbers[:10]
+        numbers = numbers[:12]
         numbers.sort()
         all_combinations.append(numbers)
       
@@ -573,26 +586,26 @@ def tab3_content():
     st.markdown(f"<div style='color:white; margin-bottom:5px;'><b>Mid Num</b> (중간 출현): {balls(sorted(mid_nums))}</div>", unsafe_allow_html=True)
   st.markdown(f"<div style='color:white; margin-bottom:5px;'><b>Cold Num</b> (최소 출현): {balls(sorted(cold_nums))}</div>", unsafe_allow_html=True)
 
-  # 미출현 번호 표시 (선택 범위 내 한 번도 안 나온 번호)
+  # 미출현 번호 표시
   all_numbers = set(range(1, 46))
   appeared_numbers = set(numbers.unique())
   not_appeared = sorted(list(all_numbers - appeared_numbers))
   if not_appeared:
     st.markdown(f"<div style='color:white; margin-top:10px;'><b>미출현 번호</b>: {balls(not_appeared)}</div>", unsafe_allow_html=True)
 
-  # 최다 빈도 10수 추천 기능
+  # 최다 빈도 12수 추천 기능
   st.markdown("---")
-  if st.button("🏆 최다 빈도 10수 조합 추천", key="btn_stat_rec"):
-      if len(hot_nums_10) >= 10:
-          rec_nums = sorted(hot_nums_10)
+  if st.button("🏆 최다 빈도 12수 조합 추천", key="btn_stat_rec"):
+      if len(freq_sorted) >= 12:
+          rec_nums = sorted(freq_sorted.head(12).index.tolist())
           st.markdown(f"""
           <div style='background-color:rgba(255,255,255,0.1); border-radius:15px; padding:20px; text-align:center; margin-top:15px; border:1px solid rgba(255,255,255,0.2);'>
-              <h3 style='color:#ffd700; margin-bottom:15px;'>👑 통계 기반 강력 추천 (Top 10)</h3>
+              <h3 style='color:#ffd700; margin-bottom:15px;'>👑 통계 기반 강력 추천 (Top 12)</h3>
               <div style='display:flex; justify-content:center; gap:10px; flex-wrap:wrap;'>
                   {generate_lotto_balls_html(rec_nums, size=60, font_size=24, use_flex=True)}
               </div>
               <p style='color:#ddd; margin-top:15px; font-size:14px;'>
-                  선택하신 기간 동안 가장 많이 당첨된 번호 10개입니다.
+                  선택하신 기간 동안 가장 많이 당첨된 번호 12개입니다.
               </p>
           </div>
           """, unsafe_allow_html=True)
@@ -612,7 +625,7 @@ def tab4_content():
   # AI 분석 목표 회차 표시
   st.markdown(f"""
   <div style='background:rgba(0,255,0,0.1); padding:10px; border-radius:10px; border:1px solid lime; text-align:center; margin-bottom:20px;'>
-      🚀 <b>제 {next_round}회 ({next_date})</b> 당첨번호 AI 예측 분석 중
+      🚀 <b>제 {next_round}회 ({next_date})</b> 당첨번호 AI 12수 분석 중
   </div>
   """, unsafe_allow_html=True)
 
@@ -736,7 +749,7 @@ def tab4_content():
     if len(real_fixed) > 5:
         real_fixed = real_fixed[:5]
         
-    # 고정수 자체의 연속성 위반 여부 확인 (이미 위반 시 연속성 체크 패스)
+    # 고정수 자체의 연속성 위반 여부 확인
     fixed_consecutive_violation = False
     if len(real_fixed) >= 3:
         nums_sorted = sorted(real_fixed)
@@ -747,16 +760,16 @@ def tab4_content():
         if cnt > 2:
             fixed_consecutive_violation = True
     
-    while len(combinations) < 10 and attempt < max_attempts:
+    while len(combinations) < 2 and attempt < max_attempts:
       attempt += 1
       numbers = list(real_fixed)
       available = [n for n in range(1, 46) if n not in excluded_numbers and n not in numbers]
       
-      if len(numbers) + len(available) < 10:
+      if len(numbers) + len(available) < 12:
         break
       
       inner_attempt = 0
-      while len(numbers) < 10:
+      while len(numbers) < 12:
         inner_attempt += 1
         if inner_attempt > 50: # 무한 루프 방지 안전장치
             break
@@ -790,12 +803,12 @@ def tab4_content():
             numbers.pop()
             continue
       
-      if len(numbers) < 10:
+      if len(numbers) < 12:
         continue
       
-      # 홀짝 비율 검증 (10개 중 3~7개가 홀수)
+      # 홀짝 비율 검증 (12개 중 4~8개가 홀수)
       odd_count = sum(1 for n in numbers if n % 2 == 1)
-      if odd_count < 3 or odd_count > 7:
+      if odd_count < 4 or odd_count > 8:
         continue
       
       # 구간 분포 검증 (5개 구간에 골고루 분포)
@@ -807,13 +820,13 @@ def tab4_content():
         elif n <= 40: zones[3] += 1
         else: zones[4] += 1
       
-      # 특정 구간에 5개 이상 몰리면 제외 (10개 기준 완화)
-      if max(zones) > 4:
+      # 특정 구간에 6개 이상 몰리면 제외
+      if max(zones) > 5:
         continue
       
-      # 번호 합계 검증 (10개 합계 평균 약 230, 범위 150~310)
+      # 번호 합계 검증 (12개 합계 평균 약 276, 범위 180~370)
       total_sum = sum(numbers)
-      if total_sum < 150 or total_sum > 310:
+      if total_sum < 180 or total_sum > 370:
         continue
       
       numbers.sort()
@@ -822,13 +835,13 @@ def tab4_content():
       if numbers not in combinations:
         combinations.append(numbers)
     
-    # 10개 미만이면 부족한 만큼 무작위 추가
-    while len(combinations) < 10:
+    # 부족한 만큼 무작위 추가
+    while len(combinations) < 2:
       available_fallback = [n for n in range(1, 46) if n not in excluded_numbers and n not in real_fixed]
-      if len(available_fallback) + len(real_fixed) < 10:
+      if len(available_fallback) + len(real_fixed) < 12:
         break
       
-      needed = 10 - len(real_fixed)
+      needed = 12 - len(real_fixed)
       nums = sorted(real_fixed + random.sample(available_fallback, needed))
       if nums not in combinations:
         combinations.append(nums)
@@ -866,20 +879,16 @@ def tab4_content():
         score = 0
         # 1. 가중치 점수 (0~50점) - weights 딕셔너리 활용
         w_sum = sum(weights.get(n, 1.0) for n in comb)
-        w_score = min(50, int((w_sum / 10.0) * 50)) 
+        w_score = min(50, int((w_sum / 12.0) * 50)) 
         
         # 2. 패턴 점수 (합계, 홀짝) (0~40점)
         s = sum(comb)
-        if 120 <= s <= 140: score += 20
-        elif 100 <= s <= 160: score += 10
-        if 200 <= s <= 260: score += 20 # 10개 합계 기준
-        elif 180 <= s <= 280: score += 10
+        if 250 <= s <= 300: score += 20
+        elif 220 <= s <= 330: score += 10
         
         odd = sum(1 for n in comb if n % 2 == 1)
-        if odd == 3: score += 20
-        elif odd in [2, 4]: score += 15
-        if odd == 5: score += 20 # 10개 중 절반
-        elif odd in [4, 6]: score += 15
+        if odd == 6: score += 20
+        elif odd in [5, 7]: score += 15
         else: score += 5
         
         # 최종 점수 (최대 99점, 최소 60점 보정)
@@ -910,14 +919,14 @@ def tab4_content():
       
       # --- 이미지 생성 및 다운로드 기능 ---
       def create_combinations_image(combinations, target_round):
-          ball_size = 45 # 10개 배치 위해 사이즈 축소
+          ball_size = 40 # 12개 배치를 위해 사이즈 축소
           padding = 25
-          h_spacing = 10
+          h_spacing = 8
           v_spacing = 25
           title_v_offset = 30
 
           row_height = ball_size + v_spacing + title_v_offset
-          img_width = padding * 2 + 10 * ball_size + 9 * h_spacing
+          img_width = padding * 2 + 12 * ball_size + 11 * h_spacing
           img_height = padding * 2 + len(combinations) * row_height - v_spacing
 
           image = Image.new('RGB', (img_width, img_height), (255, 255, 255))
@@ -987,7 +996,7 @@ def tab4_content():
       )
       
       # 카카오톡/공유하기 기능 (JS 주입)
-      share_text = "[👑 로또킹 AI 추천 번호]\\n"
+      share_text = "[👑 로또킹 AI 추천 12수 2조합]\\n"
       for idx, comb in enumerate(st.session_state['ai_combinations']):
           share_text += f"{idx+1}게임: {', '.join(map(str, comb))} (제 {next_round}회)\\n"
       share_text += "\\n당첨을 기원합니다! 🍀"
@@ -1041,7 +1050,7 @@ def tab4_content():
       """, height=50)
 
       if has_data:
-        st.success("🎯 **10/10 AI 분석 완료:** 빈도·추세·미출현 패턴 + 구간균형 + 홀짝비율 + 번호합계 + 연속번호 제어 적용")
+        st.success("🎯 **AI 12수 정밀 분석 완료:** 빈도·추세·미출현 패턴 + 구간균형 + 홀짝비율 + 번호합계 + 연속번호 제어 적용")
         
         # 분석 상세 정보 표시
         with st.expander("📊 AI 분석 세부 정보 보기"):
@@ -1050,9 +1059,9 @@ def tab4_content():
           - **최근 추세**: 최근 50회 핫 번호 우선 선택 (현재 가중치: {w_t:.0%})
           - **미출현 패턴**: 30회 이상 미출현 번호 우대 (현재 가중치: {w_g:.0%})
           - **구간 균형**: 5개 구간(1-10, 11-20, 21-30, 31-40, 41-45) 균등 분포
-          - **홀짝 비율**: 홀수 3~7개 유지 (10개 번호 기준)
+          - **홀짝 비율**: 홀수 4~8개 유지 (12개 번호 기준)
           - **연속 번호**: 연속 3개 이상 제외
-          - **번호 합계**: 150~310 범위 (10개 번호 기준)
+          - **번호 합계**: 180~370 범위 (12개 번호 기준)
           - **중복 방지**: 동일 조합 제외
           """)
     else:
@@ -1398,19 +1407,16 @@ def render_main_content():
         elif show_tab == 'tab5': tab5_content()
     else:
         st.markdown(f"""
-        <div style='text-align:center; color:white; text-shadow: 2px 2px 4px rgba(0,0,0,0.8); min-height:60vh; display:flex; flex-direction:column; justify-content:center; align-items:center;'>
+        <div style='text-align:center; color:white; text-shadow: 2px 2px 4px rgba(0,0,0,0.8); padding-top: 20px; display:flex; flex-direction:column; align-items:center;'>
             <h2 class="typing-text" style='color:white; margin-bottom: 10px;'>로또킹 AI 분석</h2>
             <p style='color:white; font-size: 18px;'>왼쪽 메뉴에서 원하시는 번호 생성 방식을 선택하세요.</p>
             
             <!-- 업데이트 알림 카드 -->
             {f'''
-            <div class="update-card" style="text-align: left; position: relative; display: block !important;">
+            <div class="update-card" style="text-align: left; position: relative;">
                 <a href="{dismiss_url}" target="_self" 
                    onclick="localStorage.setItem('lotto_update_dismissed', 'true');" 
-                   style="position: absolute; top: 10px; right: 10px; background: #ff4b4b; color: white !important; 
-                          text-decoration: none; font-size: 18px; width: 32px; height: 32px; display: flex !important; 
-                          align-items: center; justify-content: center; border-radius: 50%; border: 2px solid white; 
-                          box-shadow: 0 2px 10px rgba(0,0,0,0.5); z-index: 10000; cursor: pointer;">✕</a>
+                   style="position: absolute; top: 10px; right: 10px; background: #ff4b4b; color: white !important; text-decoration: none; font-size: 18px; width: 32px; height: 32px; display: flex !important; align-items: center; justify-content: center; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 10px rgba(0,0,0,0.5); z-index: 100; cursor: pointer;">✕</a>
                 <h3>🎉 업데이트 소식 (Ver 2.0)</h3>
                 <ul>
                     <li>💎 <b>10조합 확장:</b> 당첨 확률 UP! (6개 → 10개)</li>
@@ -1558,7 +1564,7 @@ st.markdown(f"""
         overflow: hidden;
         border-right: .1em solid #ffd700;
         white-space: nowrap;
-        margin: 0 auto;
+        margin: 0 auto 20px auto !important;
         letter-spacing: 0.1em;
         animation:
             typing 2s steps(20, end),
@@ -1596,37 +1602,40 @@ st.markdown(f"""
 
     /* --- 상단 헤더 --- */
     .top-header {{
-        position: relative;
+        position: sticky;
+        top: 0;
         display: flex;
         justify-content: space-between;
         align-items: center;
-        background: rgba(0, 0, 0, 0.7);
+        background: rgba(0, 0, 0, 0.85);
         color: white;
         padding: 10px 20px;
         border-radius: 15px;
         margin-bottom: 1rem;
         box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        z-index: 2000;
     }}
     .header-left {{
         font-size: 14px;
         position: relative; /* 클릭 가능하도록 레이어 순서 조정 */
-        z-index: 10;
+        z-index: 2001;
     }}
     .header-center {{
         position: absolute;
         left: 50%;
         transform: translateX(-50%);
-        font-size: 30px;
+        font-size: 24px;
         font-weight: bold;
         color: white;
         white-space: nowrap;
+        z-index: 2001;
     }}
     .header-right {{
         font-size: 14px;
         font-weight: bold;
         color: white;
         position: relative; /* 레이어 순서 조정 */
-        z-index: 10;
+        z-index: 2001;
     }}
     .header-left span, .header-left a {{
         margin-right: 15px;
