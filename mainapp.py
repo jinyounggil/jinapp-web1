@@ -1424,9 +1424,10 @@ def render_main_content():
             
             <!-- 업데이트 알림 카드 -->
             {f'''
-            <div class="update-card" style="position: relative; text-align: left;">
-                <a href="#" onclick="localStorage.setItem('lotto_update_dismissed', 'true'); window.location.href='{dismiss_url}'; return false;" 
-                   style="position: absolute; top: 5px; right: 10px; color: #ff4b4b; text-decoration: none; font-size: 26px; font-weight: bold; cursor: pointer; z-index: 1000; padding: 5px; line-height: 1;">✕</a>
+            <div class="update-card" style="text-align: left;">
+                <a href="{dismiss_url}" 
+                   onclick="localStorage.setItem('lotto_update_dismissed', 'true');" 
+                   style="position: absolute; top: 10px; right: 15px; color: #ff4b4b !important; text-decoration: none; font-size: 28px; font-weight: bold; cursor: pointer; z-index: 9999; line-height: 1;">×</a>
                 <h3>🎉 업데이트 소식 (Ver 2.0)</h3>
                 <ul>
                     <li>💎 <b>10조합 확장:</b> 당첨 확률 UP! (6개 → 10개)</li>
@@ -1590,6 +1591,7 @@ st.markdown(f"""
         margin-top: 30px;
         border: 1px solid gold;
         max-width: 500px;
+        position: relative;
         box-shadow: 0 0 15px rgba(255, 215, 0, 0.3);
     }}
     .update-card h3 {{
