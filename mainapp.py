@@ -1423,7 +1423,7 @@ def render_main_content():
                     <li>📷 <b>QR 스캔:</b> 지난 회차 자동 결과 확인</li>
                 </ul>
                 <div style="text-align:right; margin-top:10px;">
-                    <a href="{dismiss_url}" target="_self" style="color: #aaa; text-decoration: none; font-size: 13px; border: 1px solid #555; padding: 2px 8px; border-radius: 5px;">닫기 ✕</a>
+                    <a href="{dismiss_url}" onclick="localStorage.setItem('lotto_update_dismissed', 'true');" target="_self" style="color: #aaa; text-decoration: none; font-size: 13px; border: 1px solid #555; padding: 2px 8px; border-radius: 5px;">닫기 ✕</a>
                 </div>
             </div>
             ''' if not st.session_state.get('update_dismissed') else ""}
