@@ -59,6 +59,7 @@ try:
 
     elif action == "dismiss_update":
         st.session_state['update_dismissed'] = True
+        st.markdown("<script>localStorage.setItem('lotto_update_dismissed', 'true');</script>", unsafe_allow_html=True)
         if "action" in st.query_params:
             del st.query_params["action"]
         st.rerun()
@@ -102,11 +103,8 @@ if not st.session_state['is_subscribed']:
     <script>
         if (localStorage.getItem('lotto_subscribed') === 'true') {
             const params = new URLSearchParams(window.location.search);
-            if (params.get('action') !== 'restore_subscribe') {
-                params.set('action', 'restore_subscribe');
-                const newUrl = window.location.pathname + '?' + params.toString();
-                window.history.replaceState({}, '', newUrl);
-                window.location.href = newUrl;
+            if (!params.has('action')) {
+                window.location.href = "?action=restore_subscribe";
             }
         }
     </script>
@@ -127,11 +125,8 @@ if not st.session_state['update_dismissed']:
     <script>
         if (localStorage.getItem('lotto_update_dismissed') === 'true') {
             const params = new URLSearchParams(window.location.search);
-            if (params.get('action') !== 'restore_update_dismissed') {
-                params.set('action', 'restore_update_dismissed');
-                const newUrl = window.location.pathname + '?' + params.toString();
-                window.history.replaceState({}, '', newUrl);
-                window.location.href = newUrl;
+            if (!params.has('action')) {
+                window.location.href = "?action=restore_update_dismissed";
             }
         }
     </script>
@@ -1429,9 +1424,9 @@ def render_main_content():
             
             <!-- 업데이트 알림 카드 -->
             {f'''
-            <div class="update-card" style="position: relative;">
-                <a href="{dismiss_url}" onclick="localStorage.setItem('lotto_update_dismissed', 'true');" target="_self" 
-                   style="position: absolute; top: 10px; right: 15px; color: gold; text-decoration: none; font-size: 20px; font-weight: bold; cursor: pointer;">✕</a>
+            <div class="update-card" style="position: relative; text-align: left;">
+                <a href="#" onclick="localStorage.setItem('lotto_update_dismissed', 'true'); window.location.href='{dismiss_url}'; return false;" 
+                   style="position: absolute; top: 5px; right: 10px; color: #ff4b4b; text-decoration: none; font-size: 26px; font-weight: bold; cursor: pointer; z-index: 1000; padding: 5px; line-height: 1;">✕</a>
                 <h3>🎉 업데이트 소식 (Ver 2.0)</h3>
                 <ul>
                     <li>💎 <b>10조합 확장:</b> 당첨 확률 UP! (6개 → 10개)</li>
