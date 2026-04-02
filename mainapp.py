@@ -10,11 +10,15 @@ import base64
 from io import BytesIO, StringIO
 import requests
 import urllib.parse
+
+from update_data import update_lotto_data # 단점 1: 업데이트 로직 통합
+
 try:
-    import cv2
-    cv2_available = True
-except ImportError:
-    cv2_available = False
+  import cv2
+  cv2_available = True
+except (ImportError, Exception):
+  cv2_available = False
+
 import numpy as np
 import re
 from bs4 import BeautifulSoup
@@ -109,16 +113,12 @@ except Exception:
 st.markdown("""
 <script>
     (function() {
-        // 1. 이미 닫았다면 즉시 숨김
+        // document.write나 직접적인 location 변경은 removeChild 에러를 유발합니다.
+        // CSS 클래스를 주입하여 안전하게 숨깁니다.
         if (localStorage.getItem('lotto_update_dismissed') === 'true') {
-            document.write('<style>.update-card { display: none !important; }</style>');
-            
-            // 2. 파이썬 세션과 동기화가 안 되어 있다면 액션 호출
-            const params = new URLSearchParams(window.location.search);
-            if (params.get('action') !== 'restore_update_dismissed') {
-                params.set('action', 'restore_update_dismissed');
-                window.location.search = params.toString();
-            }
+            const style = document.createElement('style');
+            style.innerHTML = '.update-card { display: none !important; }';
+            document.head.appendChild(style);
         }
     })();
 </script>
@@ -250,100 +250,9 @@ def display_combinations_result(show_result_key, combinations_key):
         if st.session_state.get(show_result_key) and st.session_state.get(combinations_key):
             html_output = "<div style='display:flex;flex-direction:column;align-items:center; margin-top:20px;'>"
             for comb in st.session_state[combinations_key]:
-                html_output += f"<div style='margin:10px 0;'>{generate_lotto_balls_html(comb, size=45, font_size=18)}</div>"
+                html_output += f"<div style='margin:10px 0;'>{generate_lotto_balls_html(comb, size=38, font_size=15)}</div>"
             html_output += "</div>"
             st.markdown(html_output, unsafe_allow_html=True)
-
-def update_lotto_data_online():
-    """
-    온라인에서 최신 로또 당첨 데이터를 다운로드하여 past_results.csv 파일을 업데이트합니다.
-    """
-    url = "https://www.dhlottery.co.kr/common.do?method=allWinExel&gubun=byWin"
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-        'Host': 'www.dhlottery.co.kr',
-        'Origin': 'https://www.dhlottery.co.kr',
-        'Connection': 'keep-alive',
-        'Referer': 'https://www.dhlottery.co.kr/gameResult.do?method=byWin',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8'
-    }
-    try:
-        # SSL 검증을 활성화하여 보안 경고(InsecureRequestWarning)를 해결합니다.
-        response = requests.get(url, timeout=15, headers=headers, verify=True)
-        response.raise_for_status()
-    except requests.exceptions.RequestException as e:
-        return False, f"데이터 다운로드에 실패했습니다: {e}"
-
-    try:
-        # header=1로 하면 '회차별 당첨번호' 행을 헤더로 사용
-        # BeautifulSoup를 사용하여 불안정한 HTML에서도 테이블을 안정적으로 찾습니다.
-        # 1. 'cp949'로 디코딩하되, 오류가 나는 문자는 깨짐 문자로 대체(replace)합니다.
-        html_text = response.content.decode('cp949', errors='replace')
-        
-        # 2. BeautifulSoup으로 HTML을 파싱합니다.
-        soup = BeautifulSoup(html_text, 'html.parser')
-        
-        # 3. 파싱된 문서에서 'table' 태그를 찾습니다.
-        table = soup.find('table')
-        if not table:
-            raise ValueError("HTML에서 테이블 구조를 찾지 못했습니다. (서버 응답 변경 가능성)")
-
-        # 4. 찾은 테이블 부분만 pandas로 읽어들여 안정성을 높입니다.
-        dfs = pd.read_html(StringIO(str(table)), header=1)
-        if not dfs:
-            raise ValueError("테이블 데이터를 데이터프레임으로 변환하지 못했습니다.")
-        df_new = dfs[0]
-        
-        # '당첨번호'로 시작하는 열들을 찾음
-        win_num_cols = [col for col in df_new.columns if str(col).startswith('당첨번호')]
-        if len(win_num_cols) != 6:
-             raise ValueError("당첨번호 열(6개)을 정확히 찾을 수 없습니다.")
-        
-        # 필요한 열만 선택하고 이름 변경
-        required_cols = ['회차'] + win_num_cols
-        df_new = df_new[required_cols].copy()
-        df_new.columns = ["회차", "번호1", "번호2", "번호3", "번호4", "번호5", "번호6"]
-        
-        # 데이터 클리닝
-        df_new = df_new.dropna(subset=['회차'])
-        df_new = df_new[pd.to_numeric(df_new['회차'], errors='coerce').notna()]
-        df_new['회차'] = df_new['회차'].astype(int)
-        
-        latest_new_round = df_new['회차'].max()
-
-    except Exception as e:
-        return False, f"다운로드한 파일 처리 중 오류가 발생했습니다: {e}"
-
-    # 기존 데이터와 비교
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    file_path = os.path.join(base_dir, "past_results.csv")
-    
-    latest_old_round = 0
-    if os.path.exists(file_path):
-        try:
-            for enc in ['utf-8-sig', 'cp949', 'euc-kr']:
-                try:
-                    df_old = pd.read_csv(file_path, header=None, encoding=enc)
-                    break
-                except UnicodeDecodeError:
-                    continue
-            df_old_int = df_old[0].str.replace("회차", "").astype(int)
-            latest_old_round = df_old_int.max()
-        except Exception:
-            latest_old_round = 0
-
-    if latest_new_round <= latest_old_round:
-        return True, f"이미 최신 데이터입니다. (현재 {latest_old_round}회차)"
-
-    df_new['회차'] = df_new['회차'].astype(str) + "회차"
-    df_to_save = df_new.sort_values(by='회차', key=lambda x: x.str.replace('회차','').astype(int), ascending=True)
-
-    try:
-        df_to_save.to_csv(file_path, index=False, header=False, encoding='utf-8-sig')
-        st.cache_data.clear()
-        return True, f"업데이트 완료! {latest_new_round}회차까지 업데이트되었습니다."
-    except Exception as e:
-        return False, f"파일 저장 중 오류가 발생했습니다: {e}"
 
 # --- 회차 및 날짜 계산 공통 함수 ---
 def get_next_round_info():
@@ -595,17 +504,25 @@ def tab3_content():
 
   # 최다 빈도 12수 추천 기능
   st.markdown("---")
-  if st.button("🏆 최다 빈도 12수 조합 추천", key="btn_stat_rec"):
-      if len(freq_sorted) >= 12:
-          rec_nums = sorted(freq_sorted.head(12).index.tolist())
+  if st.button("🏆 통계 기반 전략 12수 추천", key="btn_stat_rec"):
+      if len(freq_sorted) >= 20:
+          # 단순 Hot 12개가 아닌 전략적 배분 (Hot 8 : Mid 2 : Cold 2)
+          hot_part = freq_sorted.head(8).index.tolist()
+          
+          mid_start = len(freq_sorted) // 2 - 1
+          mid_part = freq_sorted.iloc[mid_start:mid_start+2].index.tolist()
+          
+          cold_part = freq_sorted.tail(2).index.tolist()
+          
+          rec_nums = sorted(hot_part + mid_part + cold_part)
           st.markdown(f"""
           <div style='background-color:rgba(255,255,255,0.1); border-radius:15px; padding:20px; text-align:center; margin-top:15px; border:1px solid rgba(255,255,255,0.2);'>
-              <h3 style='color:#ffd700; margin-bottom:15px;'>👑 통계 기반 강력 추천 (Top 12)</h3>
+              <h3 style='color:#ffd700; margin-bottom:15px;'>👑 통계 기반 전략 추천 (8:2:2 혼합)</h3>
               <div style='display:flex; justify-content:center; gap:10px; flex-wrap:wrap;'>
                   {generate_lotto_balls_html(rec_nums, size=60, font_size=24, use_flex=True)}
               </div>
               <p style='color:#ddd; margin-top:15px; font-size:14px;'>
-                  선택하신 기간 동안 가장 많이 당첨된 번호 12개입니다.
+                  최다 빈도(8개), 중간 빈도(2개), 최소 빈도(2개)를 전략적으로 혼합한 12수입니다.
               </p>
           </div>
           """, unsafe_allow_html=True)
@@ -636,15 +553,19 @@ def tab4_content():
     
   # 과거 데이터 로드 및 고급 분석
   try:
-    # 최근 300회 데이터 분석
-    recent_data = past_results.head(300)
-    all_numbers = pd.concat([
-      recent_data["번호1"], recent_data["번호2"], recent_data["번호3"],
-      recent_data["번호4"], recent_data["번호5"], recent_data["번호6"]
-    ])
+    # 최근 75회 중기 데이터 분석 (기존 300회에서 축소하여 중기 흐름 강조)
+    recent_data = past_results.head(75)
     
-    # 1. 빈도 분석
-    freq = all_numbers.value_counts()
+    # 1. 빈도 분석 고도화 (75회, 45회, 30회, 10회 구간 중첩 반영)
+    # 단기보다 중기적인 출현을 정밀하게 고려하기 위해 구간별 빈도를 합산하여 가중치를 부여합니다.
+    def get_counts_at(n_rounds):
+        df_slice = past_results.head(min(len(past_results), n_rounds))
+        return pd.concat([df_slice[f"번호{i}"] for i in range(1, 7)]).value_counts()
+
+    f75, f45, f30, f10 = get_counts_at(75), get_counts_at(45), get_counts_at(30), get_counts_at(10)
+    
+    # 각 구간 빈도 합산: 10/30/45/75회 출현 정보가 누적되어 중기 가중 점수가 형성됨
+    freq = f75.add(f45, fill_value=0).add(f30, fill_value=0).add(f10, fill_value=0)
     freq_sorted = freq.sort_values(ascending=False)
     
     # 2. 최근 추세 분석 (최근 50회 vs 전체)
@@ -1050,14 +971,15 @@ def tab4_content():
       """, height=50)
 
       if has_data:
-        st.success("🎯 **AI 12수 정밀 분석 완료:** 빈도·추세·미출현 패턴 + 구간균형 + 홀짝비율 + 번호합계 + 연속번호 제어 적용")
+        st.success("🎯 **AI 6:4:2 배분 분석 완료:** (1~5회차: 6수 / 6~10회차: 4수 / 기타: 2수) 전략 적용됨")
         
         # 분석 상세 정보 표시
         with st.expander("📊 AI 분석 세부 정보 보기"):
           st.markdown(f"""
-          - **빈도 분석**: 최근 300회 데이터 기반 출현 빈도 (현재 가중치: {w_f:.0%})
+          - **빈도 분석**: 최근 75회 중기 데이터(10/30/45/75 중첩) 기반 출현 빈도 (현재 가중치: {w_f:.0%})
           - **최근 추세**: 최근 50회 핫 번호 우선 선택 (현재 가중치: {w_t:.0%})
           - **미출현 패턴**: 30회 이상 미출현 번호 우대 (현재 가중치: {w_g:.0%})
+          - **6:4:2 전략**: 최근 5회차(6개), 6~10회차(4개), 기타(2개) 번호 배분
           - **구간 균형**: 5개 구간(1-10, 11-20, 21-30, 31-40, 41-45) 균등 분포
           - **홀짝 비율**: 홀수 4~8개 유지 (12개 번호 기준)
           - **연속 번호**: 연속 3개 이상 제외
@@ -1098,7 +1020,7 @@ def tab5_content():
     # QR 코드 스캔 기능 추가
     with st.expander("📷 QR코드로 번호 스캔 (카메라)"):
       if not cv2_available:
-        st.warning("⚠️ QR코드 스캔 기능을 사용하려면 'opencv-python' 라이브러리가 필요합니다.\n터미널에 `pip install opencv-python`을 입력하여 설치해주세요.")
+                st.warning("⚠️ 카메라 모듈(OpenCV)을 로드할 수 없습니다. 시스템 환경이나 라이브러리(libGL 등)를 확인해주세요.")
       else:
         img_file = st.camera_input("로또 용지의 QR코드를 비춰주세요")
         if img_file:
@@ -1329,9 +1251,6 @@ def render_header():
                 <a href="{like_url}" target="_self">❤️ 좋아요 {st.session_state.like_count}</a>
                 <a href="{subscribe_url}" target="_self" style="{sub_style}">{sub_label}</a>
             </div>
-            <div class="header-center">
-                ✨ 로또킹 PRO 2.0 (10조합 업데이트) 🚀
-            </div>
             <div class="header-right">
                 🔜 이번주 추첨: 제 {next_draw_round}회 ({next_date_str})
             </div>
@@ -1406,34 +1325,22 @@ def render_main_content():
         elif show_tab == 'tab4': tab4_content()
         elif show_tab == 'tab5': tab5_content()
     else:
+        # 알림 카드를 주석 처리(삭제)하기 위해 변수를 빈 값으로 초기화합니다.
+        # f-string 내부에서 복잡한 로직을 수행하면 HTML 소스가 그대로 노출될 위험이 큽니다.
+        update_card_html = "" 
+
+        # 메인 제목 영역 렌더링
         st.markdown(f"""
-        <div style='text-align:center; color:white; text-shadow: 2px 2px 4px rgba(0,0,0,0.8); padding-top: 20px; display:flex; flex-direction:column; align-items:center;'>
-            <h2 class="typing-text" style='color:white; margin-bottom: 10px;'>로또킹 AI 분석</h2>
-            <p style='color:white; font-size: 18px;'>왼쪽 메뉴에서 원하시는 번호 생성 방식을 선택하세요.</p>
+        <div style='text-align:center; color:white; text-shadow: 2px 2px 4px rgba(0,0,0,0.8); padding-top: 60px; display:flex; flex-direction:column; align-items:center;'>
+            <h2 class="typing-text" style='color:white; margin-bottom: 20px;'>로또킹 AI 분석</h2>
             
-            <!-- 업데이트 알림 카드 -->
-            {f'''
-            <div class="update-card" style="text-align: left; position: relative;">
-                <a href="{dismiss_url}" target="_self" 
-                   onclick="localStorage.setItem('lotto_update_dismissed', 'true');" 
-                   style="position: absolute; top: 10px; right: 10px; background: #ff4b4b; color: white !important; text-decoration: none; font-size: 18px; width: 32px; height: 32px; display: flex !important; align-items: center; justify-content: center; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 10px rgba(0,0,0,0.5); z-index: 100; cursor: pointer;">✕</a>
-                <h3>🎉 업데이트 소식 (Ver 2.0)</h3>
-                <ul>
-                    <li>💎 <b>10조합 확장:</b> 당첨 확률 UP! (6개 → 10개)</li>
-                    <li>🎱 <b>3D 리얼 볼:</b> 입체감 있는 프리미엄 디자인</li>
-                    <li>✨ <b>시각 효과:</b> 당첨 번호 반짝임 & 축하 효과</li>
-                    <li>📷 <b>QR 스캔:</b> 지난 회차 자동 결과 확인</li>
-                </ul>
-            </div>
-            ''' if not st.session_state.get('update_dismissed') else ""}
-            
-            <p class='pointing-finger'>👈</p>
+            {update_card_html}
         </div>
         """, unsafe_allow_html=True)
         
-        if 'update_toast_shown' not in st.session_state:
-            st.toast("🚀 로또킹 PRO 2.0 업데이트 완료! 새로운 10조합 기능을 확인하세요!", icon="🎉")
-            st.session_state['update_toast_shown'] = True
+#         if 'update_toast_shown' not in st.session_state:
+#             st.toast("🚀 로또킹 PRO 2.1 업데이트 완료! 12수 2조합 시스템 적용!", icon="🎉")
+#             st.session_state['update_toast_shown'] = True
 
 def get_image_as_base64(path):
     if not os.path.exists(path):
@@ -1802,7 +1709,7 @@ st.markdown(f"""
 if 'data_updated' not in st.session_state:
     # 화면 로딩 중에 스피너 표시
     with st.spinner('최신 로또 당첨 정보를 동기화 중입니다...'):
-        success, msg = update_lotto_data_online()
+        success, msg = update_lotto_data()
         if success:
              st.toast(msg, icon="✅")
         # 실패하더라도 기존 csv 파일로 구동되므로 에러는 toast로만 알림

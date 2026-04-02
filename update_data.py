@@ -23,13 +23,11 @@ def update_lotto_data():
         table = soup.find('table')
         
         if not table:
-            print("❌ 테이블을 찾을 수 없습니다.")
-            return
+            return False, "데이터 테이블을 찾을 수 없습니다."
 
         dfs = pd.read_html(StringIO(str(table)), header=1)
         if not dfs:
-            print("❌ 데이터프레임 변환 실패")
-            return
+            return False, "데이터 변환에 실패했습니다."
             
         df_new = dfs[0]
         
@@ -47,8 +45,7 @@ def update_lotto_data():
         print(f"📡 서버 최신 회차: {latest_new_round}회")
 
     except Exception as e:
-        print(f"❌ 데이터 다운로드/처리 중 오류: {e}")
-        return
+        return False, f"데이터 처리 중 오류 발생: {e}"
 
     # 기존 파일 확인
     file_path = "past_results.csv"
@@ -64,8 +61,7 @@ def update_lotto_data():
     print(f"📂 로컬 저장 회차: {latest_old_round}회")
 
     if latest_new_round <= latest_old_round:
-        print("✅ 이미 최신 상태입니다.")
-        return
+        return True, f"이미 최신 상태입니다. ({latest_old_round}회)"
 
     # 저장 로직
     df_new['회차'] = df_new['회차'].astype(str) + "회차"
@@ -73,9 +69,9 @@ def update_lotto_data():
     
     try:
         df_to_save.to_csv(file_path, index=False, header=False, encoding='utf-8-sig')
-        print(f"🎉 {latest_new_round}회차까지 업데이트 완료 및 저장 성공!")
+        return True, f"{latest_new_round}회차 업데이트 완료!"
     except Exception as e:
-        print(f"❌ 파일 저장 실패: {e}")
+        return False, f"파일 저장 실패: {e}"
 
 if __name__ == "__main__":
     update_lotto_data()
