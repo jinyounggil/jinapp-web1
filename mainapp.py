@@ -26,6 +26,8 @@ from bs4 import BeautifulSoup
 import platform
 import urllib3
 import uuid
+import matplotlib.font_manager as fm
+import matplotlib
 
 # 페이지 설정 (가장 먼저 호출)
 st.set_page_config(layout="centered", page_title="로또킹 분석", initial_sidebar_state="collapsed")
@@ -506,36 +508,36 @@ def tab2_content():
   display_combinations_result('tab2_show_result', 'tab2_combinations')
 
 
+def setup_visualization_style():
+    """Matplotlib 한글 폰트 및 다크모드 스타일 설정"""
+    system_name = platform.system()
+    if system_name == 'Windows':
+        plt.rc('font', family='Malgun Gothic')
+    elif system_name == 'Darwin':
+        plt.rc('font', family='AppleGothic')
+    else:
+        path = '/usr/share/fonts/truetype/nanum/NanumGothic.ttf'
+        if os.path.exists(path):
+            font_name = fm.FontProperties(fname=path).get_name()
+            plt.rc('font', family=font_name)
+        else:
+            plt.rc('font', family='DejaVu Sans')
+
+    plt.rcParams.update({
+        "text.color": "white",
+        "axes.labelcolor": "white",
+        "xtick.color": "white",
+        "ytick.color": "white",
+        "axes.edgecolor": "white",
+        "axes.unicode_minus": False
+    })
+
+# 폰트 설정 실행
+setup_visualization_style()
+
 def tab3_content():
   next_round, next_date = get_next_round_info()
   
-  import matplotlib
-  import matplotlib.font_manager as fm
-
-  # OS별 한글 폰트 설정
-  system_name = platform.system()
-  if system_name == 'Windows':
-      plt.rc('font', family='Malgun Gothic')
-  elif system_name == 'Darwin': # Mac
-      plt.rc('font', family='AppleGothic')
-  else: # Linux (Streamlit Cloud)
-      path = '/usr/share/fonts/truetype/nanum/NanumGothic.ttf'
-      if os.path.exists(path):
-          font_name = fm.FontProperties(fname=path).get_name()
-          plt.rc('font', family=font_name)
-      else:
-          plt.rc('font', family='DejaVu Sans') # 폰트 없을 시 기본값
-  
-  # 그래프 텍스트 및 라인 흰색 설정 (다크 모드 대응)
-  plt.rcParams.update({
-      "text.color": "white",
-      "axes.labelcolor": "white",
-      "xtick.color": "white",
-      "ytick.color": "white",
-      "axes.edgecolor": "white",
-      "axes.unicode_minus": False # 마이너스 깨짐 방지
-  })
-
   past_results = load_lotto_data()
   if past_results is None:
       st.error("로또 데이터 파일을 찾을 수 없거나 손상되었습니다. 앱을 재시작하거나 메인화면에서 데이터를 업로드해주세요.")
