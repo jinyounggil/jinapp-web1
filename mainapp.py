@@ -106,25 +106,6 @@ except Exception:
     # st.query_params가 지원되지 않는 환경 등 예외 처리
     pass
 
-# SSL 인증서 검증 경고를 무시하고 싶은 경우 아래 주석을 해제하세요.
-# urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-# 브라우저 로컬 스토리지 상태 확인 및 CSS 가드
-st.markdown("""
-<script>
-    (function() {
-        // document.write나 직접적인 location 변경은 removeChild 에러를 유발합니다.
-        // CSS 클래스를 주입하여 안전하게 숨깁니다.
-        if (localStorage.getItem('lotto_update_dismissed') === 'true') {
-            const style = document.createElement('style');
-            style.innerHTML = '.update-card { display: none !important; }';
-            document.head.appendChild(style);
-        }
-    })();
-</script>
-""", unsafe_allow_html=True)
-
-
 # ----- tab1~tab4 UI 함수 직접 정의 -----
 def get_color(n):
   # 실로또공 색상: 1~10 노랑, 11~20 파랑, 21~30 빨강, 31~40 검정, 41~45 초록
