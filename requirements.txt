@@ -9,4 +9,3 @@ lxml
 numpy
 html5lib
 openpyxl
-
