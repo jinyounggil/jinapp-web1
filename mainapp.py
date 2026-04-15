@@ -58,19 +58,15 @@ try:
     
     if action == "restore_subscribe":
         st.session_state['is_subscribed'] = True
-        if "action" in st.query_params:
-            del st.query_params["action"]
+        st.query_params.clear()
         st.rerun()
 
     elif action == "restore_update_dismissed":
         st.session_state['update_dismissed'] = True
-        # 리다이렉트 없이 진행
 
     elif action == "dismiss_update":
         st.session_state['update_dismissed'] = True
-        st.markdown("<script>localStorage.setItem('lotto_update_dismissed', 'true');</script>", unsafe_allow_html=True)
-        if "action" in st.query_params:
-            del st.query_params["action"]
+        st.query_params.clear()
         st.rerun()
         
     elif action == "like":
@@ -89,13 +85,11 @@ try:
             try:
                 st.snow() # 구독 클릭 시 눈내림 효과
                 st.toast("🎉 구독 감사합니다! 매주 행운의 번호를 받아보세요! 🎁")
-                st.markdown("<script>localStorage.setItem('lotto_subscribed', 'true');</script>", unsafe_allow_html=True)
             except:
                 pass
         else:
             try:
                 st.toast("구독이 취소되었습니다. 다음에 또 만나요! 👋")
-                st.markdown("<script>localStorage.removeItem('lotto_subscribed');</script>", unsafe_allow_html=True)
             except:
                 pass
         
@@ -105,25 +99,6 @@ try:
 except Exception:
     # st.query_params가 지원되지 않는 환경 등 예외 처리
     pass
-
-# SSL 인증서 검증 경고를 무시하고 싶은 경우 아래 주석을 해제하세요.
-# urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-# 브라우저 로컬 스토리지 상태 확인 및 CSS 가드
-st.markdown("""
-<script>
-    (function() {
-        // document.write나 직접적인 location 변경은 removeChild 에러를 유발합니다.
-        // CSS 클래스를 주입하여 안전하게 숨깁니다.
-        if (localStorage.getItem('lotto_update_dismissed') === 'true') {
-            const style = document.createElement('style');
-            style.innerHTML = '.update-card { display: none !important; }';
-            document.head.appendChild(style);
-        }
-    })();
-</script>
-""", unsafe_allow_html=True)
-
 
 # ----- tab1~tab4 UI 함수 직접 정의 -----
 def get_color(n):
