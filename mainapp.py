@@ -154,80 +154,96 @@ def generate_lotto_balls_html(numbers, size, font_size, margin="2px", use_flex=F
 @st.cache_data
 def load_lotto_data():
     """
-    과거 로또 당첨 데이터를 CSV 파일에서 로드하고 전처리합니다. 오류 발생 시 None을 반환합니다.
-    '추천회차.csv'와 'past_results.csv' 중 더 최신 회차가 있는 데이터를 자동으로 선택합니다.
+    과거 로또 당첨 데이터를 Pd flame data-3.xlsm 파일에서 로드하고 전처리합니다. 오류 발생 시 None을 반환합니다.
     """
     try:
-        # 파일 경로를 절대 경로로 설정하여 서버 환경에서의 경로 오류 방지
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        
-        # 확인해볼 파일 후보군
-        candidate_files = ["추천회차.csv", "past_results.csv"]
-        
-        # 인코딩 호환성을 위해 여러 인코딩 시도
-        encodings = ['utf-8-sig', 'cp949', 'euc-kr']
-        
-        best_df = None
-        max_round = -1
-        
-        for fname in candidate_files:
-            csv_path = os.path.join(base_dir, fname)
-            if not os.path.exists(csv_path):
-                continue
-            
-            current_df = None
-            for enc in encodings:
-                try:
-                    # CSV 읽기 (헤더 없음)
-                    temp_df = pd.read_csv(csv_path, header=None, encoding=enc)
-                    
-                    # 열 개수 체크 (최소 7개: 회차 + 번호 6개)
-                    if temp_df.shape[1] < 7:
-                        continue
-                        
-                    # 8열(보너스 포함)이어도 앞의 7열만 사용
-                    temp_df = temp_df.iloc[:, :7]
-                    temp_df.columns = ["회차", "번호1", "번호2", "번호3", "번호4", "번호5", "번호6"]
-                    
-                    # 회차에서 숫자만 추출 (예: '1216회차' -> 1216)
-                    try:
-                        temp_df["회차_int"] = temp_df["회차"].astype(str).str.replace(r'\D+', '', regex=True).astype(int)
-                    except:
-                        continue
-                        
-                    current_df = temp_df
-                    break
-                except Exception:
-                    continue
-            
-            # 로드 성공 시, 가장 높은 회차인지 비교
-            if current_df is not None and not current_df.empty:
-                current_max = current_df["회차_int"].max()
-                if current_max > max_round:
-                    max_round = current_max
-                    best_df = current_df
-
-        if best_df is not None:
-            return best_df.sort_values("회차_int", ascending=False)
-        else:
+        # Pd flame data-3.xlsm 파일 로드
+        excel_path = "Pd flame data-3.xlsm"
+        if not os.path.exists(excel_path):
+            print(f"데이터 파일 {excel_path}을 찾을 수 없습니다.")
             return None
+        
+        # Excel 파일 로드
+        temp_df = pd.read_excel(excel_path, engine='openpyxl')
+        
+        # 열 개수 체크 (최소 7개: 회차 + 번호 6개)
+        if temp_df.shape[1] < 7:
+            print("데이터 파일에 충분한 열이 없습니다.")
+            return None
+            
+        # 8열(보너스 포함)이어도 앞의 7열만 사용
+        temp_df = temp_df.iloc[:, :7]
+        temp_df.columns = ["회차", "번호1", "번호2", "번호3", "번호4", "번호5", "번호6"]
+        
+        # 회차에서 숫자만 추출 (예: '1216회차' -> 1216)
+        try:
+            temp_df["회차_int"] = temp_df["회차"].astype(str).str.replace(r'\D+', '', regex=True).astype(int)
+        except Exception as e:
+            print(f"회차 처리 중 오류: {e}")
+            return None
+            
+        return temp_df.sort_values("회차_int", ascending=False)
 
-    except (FileNotFoundError, Exception) as e:
-        # st.error() 호출을 제거하여 앱 시작 시 레이아웃이 깨지는 것을 방지합니다.
-        # 오류 처리는 이 함수를 호출하는 각 UI 섹션에서 담당합니다.
-        print(f"데이터 로드 중 오류 발생: {e}") # 서버 로그용
+    except Exception as e:
+        print(f"데이터 로드 중 오류 발생: {e}")
         return None
 
-def display_combinations_result(show_result_key, combinations_key):
-    """Streamlit 세션 상태를 기반으로 로또 조합 목록을 표시합니다."""
-    result_placeholder = st.empty()
-    with result_placeholder.container():
-        if st.session_state.get(show_result_key) and st.session_state.get(combinations_key):
-            html_output = "<div style='display:flex;flex-direction:column;align-items:center; margin-top:20px;'>"
-            for comb in st.session_state[combinations_key]:
-                html_output += f"<div style='margin:10px 0;'>{generate_lotto_balls_html(comb, size=38, font_size=15)}</div>"
-            html_output += "</div>"
-            st.markdown(html_output, unsafe_allow_html=True)
+def load_excel_data(file_input):
+    """
+    엑셀 파일(업로드된 파일 또는 경로)에서 로또 데이터를 로드하고 전처리합니다.
+    """
+    try:
+        df = pd.read_excel(file_input, header=0)  # 헤더가 있는 경우
+        
+        # 필요한 열이 있는지 확인
+        required_cols = ['추첨회차', '당번1', '당번2', '당번3', '당번4', '당번5', '당번6']
+        if not all(col in df.columns for col in required_cols):
+            # 헤더가 없는 경우 재시도
+            df = pd.read_excel(file_input, header=None)
+            if df.shape[1] < 7:
+                return None, "엑셀 파일에 충분한 열이 없습니다. 회차와 6개의 번호 열이 필요합니다."
+            df = df.iloc[:, :7]
+            df.columns = ["회차", "번호1", "번호2", "번호3", "번호4", "번호5", "번호6"]
+        else:
+            # 헤더가 있는 경우 매핑
+            df = df[required_cols]
+            df.columns = ["회차", "번호1", "번호2", "번호3", "번호4", "번호5", "번호6"]
+        
+        # 회차에서 숫자만 추출
+        df["회차_int"] = df["회차"].astype(str).str.replace(r'\D+', '', regex=True).astype(int)
+        
+        # 데이터 정제
+        df = df.dropna(subset=['회차_int'])
+        df = df[(df['번호1'].between(1, 45)) & (df['번호2'].between(1, 45)) & 
+                (df['번호3'].between(1, 45)) & (df['번호4'].between(1, 45)) & 
+                (df['번호5'].between(1, 45)) & (df['번호6'].between(1, 45))]
+        
+        return df.sort_values("회차_int", ascending=False), None
+    except Exception as e:
+        return None, f"엑셀 파일 처리 중 오류 발생: {e}"
+
+def merge_excel_data(existing_df, new_df):
+    """
+    기존 데이터와 새 엑셀 데이터를 병합합니다.
+    """
+    try:
+        # 회차를 기준으로 병합 (중복 회차는 새 데이터로 덮어씀)
+        combined = pd.concat([existing_df, new_df]).drop_duplicates(subset='회차_int', keep='last')
+        return combined.sort_values("회차_int", ascending=False), None
+    except Exception as e:
+        return None, f"데이터 병합 중 오류 발생: {e}"
+
+def save_data_to_excel(df, filename="Pd flame data-3.xlsm"):
+    """
+    데이터를 Excel 파일로 저장합니다.
+    """
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        excel_path = os.path.join(base_dir, filename)
+        df.to_excel(excel_path, index=False, engine='openpyxl')
+        return True, None
+    except Exception as e:
+        return False, f"Excel 저장 중 오류 발생: {e}"
 
 # --- 회차 및 날짜 계산 공통 함수 ---
 def get_next_round_info():
@@ -256,6 +272,29 @@ def get_next_round_info():
         
     next_date = base_date + datetime.timedelta(days=(next_round - 1) * 7)
     return next_round, next_date.strftime("%Y-%m-%d")
+
+
+def display_combinations_result(show_state_key, combos_state_key):
+    """공통 결과 표시 함수: 탭별 생성된 번호 목록을 렌더링합니다."""
+    if st.session_state.get(show_state_key, False) and st.session_state.get(combos_state_key):
+        st.markdown("### 🎯 추천 번호 결과")
+        for idx, comb in enumerate(st.session_state[combos_state_key], start=1):
+            balls_html = generate_lotto_balls_html(
+                comb,
+                size=52,
+                font_size=18,
+                margin="4px",
+                use_flex=True,
+                extra_css="border:1px solid rgba(255,255,255,0.18);",
+            )
+            st.markdown(
+                f"<div style='margin-bottom:20px;'>"
+                f"<div style='color:#fff; font-weight:700; margin-bottom:10px;'>조합 {idx}</div>"
+                f"<div style='display:flex; flex-wrap:nowrap; align-items:center; gap:4px; overflow-x:auto; padding-bottom:4px;'>{balls_html}</div>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+
 
 def tab1_content():
   # session_state 초기화
@@ -1300,6 +1339,90 @@ def render_main_content():
         elif show_tab == 'tab4': tab4_content()
         elif show_tab == 'tab5': tab5_content()
     else:
+        # 엑셀 파일 업로드 섹션 (접을 수 있게)
+        with st.expander("📊 엑셀 파일로 회차 데이터 업로드", expanded=False):
+            st.markdown("로또 회차 데이터를 포함한 .xlsx 또는 .xls 파일을 업로드하여 Pd flame data-3.xlsm에 추가할 수 있습니다.")
+        
+            # Pd flame data-3.xlsm 파일 직접 로드 옵션
+            st.markdown("**또는 기존 엑셀 파일 사용:**")
+            if st.button("Pd flame data-3.xlsm 파일에서 데이터 로드", key="btn_load_pd_flame"):
+                excel_path = "Pd flame data-3.xlsm"
+                if os.path.exists(excel_path):
+                    with st.spinner("Pd flame data-3.xlsm 파일을 처리 중입니다..."):
+                        # 기존 데이터 로드
+                        existing_data = load_lotto_data()
+                        if existing_data is None:
+                            st.error("기존 데이터를 로드할 수 없습니다. Pd flame data-3.xlsm 파일을 확인해주세요.")
+                            st.stop()
+                    
+                        # 엑셀 데이터 로드
+                        try:
+                            excel_data, error_msg = load_excel_data(excel_path)
+                            if error_msg:
+                                st.error(error_msg)
+                                st.stop()
+                            
+                            # 데이터 병합
+                            merged_data, merge_error = merge_excel_data(existing_data, excel_data)
+                            if merge_error:
+                                st.error(merge_error)
+                                st.stop()
+                            
+                            # Excel에 저장
+                            save_success, save_error = save_data_to_excel(merged_data)
+                            if save_error:
+                                st.error(save_error)
+                                st.stop()
+                            
+                            st.success(f"✅ Pd flame data-3.xlsm 데이터를 성공적으로 업데이트했습니다! {len(excel_data)}개의 회차가 확인되었습니다.")
+                            st.info("변경사항을 적용하려면 페이지를 새로고침하세요.")
+                            
+                            # 로드된 데이터 미리보기
+                            st.markdown("**로드된 데이터 미리보기:**")
+                            preview_df = excel_data.head(5)
+                            st.dataframe(preview_df[['회차', '번호1', '번호2', '번호3', '번호4', '번호5', '번호6']])
+                        except Exception as e:
+                            st.error(f"파일 처리 중 오류: {e}")
+                else:
+                    st.error("Pd flame data-3.xlsm 파일을 찾을 수 없습니다.")
+
+            uploaded_excel = st.file_uploader("엑셀 파일 선택 (.xlsx, .xls, .xlsm)", type=["xlsx", "xls", "xlsm"], key="excel_upload")
+        
+            if uploaded_excel is not None:
+                if st.button("데이터 업로드 및 병합", key="btn_upload_excel"):
+                    with st.spinner("엑셀 파일을 처리 중입니다..."):
+                        # 기존 데이터 로드
+                        existing_data = load_lotto_data()
+                        if existing_data is None:
+                            st.error("기존 데이터를 로드할 수 없습니다. CSV 파일을 확인해주세요.")
+                            st.stop()
+                        
+                        # 엑셀 데이터 로드
+                        excel_data, error_msg = load_excel_data(uploaded_excel)
+                        if error_msg:
+                            st.error(error_msg)
+                            st.stop()
+                        
+                        # 데이터 병합
+                        merged_data, merge_error = merge_excel_data(existing_data, excel_data)
+                        if merge_error:
+                            st.error(merge_error)
+                            st.stop()
+                        
+                        # Excel에 저장
+                        save_success, save_error = save_data_to_excel(merged_data)
+                        if save_error:
+                            st.error(save_error)
+                            st.stop()
+                        
+                        st.success(f"✅ 엑셀 데이터를 성공적으로 업로드했습니다! {len(excel_data)}개의 회차가 추가/업데이트되었습니다.")
+                        st.info("변경사항을 적용하려면 페이지를 새로고침하세요.")
+                        
+                        # 업로드된 데이터 미리보기
+                        st.markdown("**업로드된 데이터 미리보기:**")
+                        preview_df = excel_data.head(5)
+                        st.dataframe(preview_df[['회차', '번호1', '번호2', '번호3', '번호4', '번호5', '번호6']])
+
         # 알림 카드를 주석 처리(삭제)하기 위해 변수를 빈 값으로 초기화합니다.
         # f-string 내부에서 복잡한 로직을 수행하면 HTML 소스가 그대로 노출될 위험이 큽니다.
         update_card_html = "" 
