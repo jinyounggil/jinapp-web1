@@ -1231,6 +1231,28 @@ def play_bgm():
         unsafe_allow_html=True
     )
 
+def get_and_increment_visitor_count():
+    visitor_file = "visitor_count.txt"
+    count = 0
+    if os.path.exists(visitor_file):
+        try:
+            with open(visitor_file, "r", encoding="utf-8") as f:
+                content = f.read().strip()
+                if content:
+                    count = int(content)
+        except Exception:
+            count = 0
+            
+    if 'has_visited' not in st.session_state:
+        st.session_state['has_visited'] = True
+        count += 1
+        try:
+            with open(visitor_file, "w", encoding="utf-8") as f:
+                f.write(str(count))
+        except Exception:
+            pass
+            
+    return count
 
 def render_header():
     """ Renders the custom top header for the app. """
@@ -1258,12 +1280,15 @@ def render_header():
     sub_label = "🔔 구독중" if st.session_state.get('is_subscribed') else "🔔 구독"
     sub_style = "color: #ffd700; font-weight:bold;" if st.session_state.get('is_subscribed') else "color: white;"
 
+    visitor_count = get_and_increment_visitor_count()
+
     st.markdown(f"""
         <div class="top-header">
             <div class="header-left">
                 <span>🔗 공유</span>
                 <a href="{like_url}" target="_self">❤️ 좋아요 {st.session_state.like_count}</a>
                 <a href="{subscribe_url}" target="_self" style="{sub_style}">{sub_label}</a>
+                <span style="margin-left: 10px; color: #a0e0ff; font-weight: bold;">👀 방문자 {visitor_count}</span>
             </div>
             <div class="header-right">
                 🔜 이번주 추첨: 제 {next_draw_round}회 ({next_date_str})
@@ -1431,6 +1456,9 @@ def render_main_content():
         st.markdown(f"""
         <div style='text-align:center; color:white; text-shadow: 2px 2px 4px rgba(0,0,0,0.8); padding-top: 60px; display:flex; flex-direction:column; align-items:center;'>
             <h2 class="typing-text" style='color:white; margin-bottom: 20px;'>로또킹 AI 분석</h2>
+            <div style="background: rgba(255,255,255,0.1); padding: 5px 20px; border-radius: 20px; font-size: 16px; margin-bottom: 20px; border: 1px solid rgba(255,255,255,0.3); box-shadow: 0 0 10px rgba(0,0,0,0.5);">
+                👀 누적 방문자 수: <b style="color: #ffd700; font-size: 18px;">{get_and_increment_visitor_count()}</b> 명
+            </div>
             
             {update_card_html}
         </div>
