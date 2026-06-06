@@ -3,8 +3,9 @@ import requests
 from bs4 import BeautifulSoup
 from io import StringIO
 import os
+from typing import Tuple
 
-def update_lotto_data():
+def update_lotto_data() -> Tuple[bool, str]:
     print("🔄 로또 데이터 업데이트 시작...")
     url = "https://www.dhlottery.co.kr/common.do?method=allWinExel&gubun=byWin"
     headers = {
@@ -32,7 +33,9 @@ def update_lotto_data():
         df_new = dfs[0]
         
         # 필요한 열만 선택 및 전처리
-        win_num_cols = [col for col in df_new.columns if str(col).startswith('당첨번호')]
+        win_num_cols = [col for col in df_new.columns if str(col).startswith('당첨번호')][:6]
+        if len(win_num_cols) < 6:
+            return False, "당첨번호 데이터를 올바르게 파싱하지 못했습니다."
         required_cols = ['회차'] + win_num_cols
         df_new = df_new[required_cols].copy()
         df_new.columns = ["회차", "번호1", "번호2", "번호3", "번호4", "번호5", "번호6"]
@@ -53,7 +56,7 @@ def update_lotto_data():
     if os.path.exists(file_path):
         try:
             df_old = pd.read_csv(file_path, header=None, encoding='utf-8-sig')
-            df_old_int = df_old[0].str.replace("회차", "").astype(int)
+            df_old_int = df_old[0].astype(str).str.replace(r'\D+', '', regex=True).astype(int)
             latest_old_round = df_old_int.max()
         except Exception:
             latest_old_round = 0
@@ -64,8 +67,8 @@ def update_lotto_data():
         return True, f"이미 최신 상태입니다. ({latest_old_round}회)"
 
     # 저장 로직
-    df_new['회차'] = df_new['회차'].astype(str) + "회차"
-    df_to_save = df_new.sort_values(by='회차', key=lambda x: x.str.replace('회차','').astype(int), ascending=True)
+    df_to_save = df_new.sort_values(by='회차', ascending=True)
+    df_to_save['회차'] = df_to_save['회차'].astype(str) + "회차"
     
     try:
         df_to_save.to_csv(file_path, index=False, header=False, encoding='utf-8-sig')
