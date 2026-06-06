@@ -1098,6 +1098,9 @@ def tab5_content():
       return
 
   try:
+    latest_round = past_results["회차_int"].max()
+    st.markdown(f"<p style='text-align:center; color:#ccc; margin-top:-10px;'>현재 등록된 최신 회차: <b style='color:#ffd700;'>{latest_round}회</b></p>", unsafe_allow_html=True)
+    
     valid_rounds = past_results["회차_int"].tolist()
     auto_check = False
     
@@ -1469,7 +1472,9 @@ def render_main_content():
                                 st.error(save_error)
                                 st.stop()
                             
-                            st.success(f"✅ Pd flame data-3.xlsm 데이터를 성공적으로 업데이트했습니다! {len(excel_data)}개의 회차가 확인되었습니다.")
+                            load_lotto_data.clear() # 캐시를 초기화하여 최신 데이터가 반영되도록 함
+                            max_round = merged_data['회차_int'].max()
+                            st.success(f"✅ Pd flame data-3.xlsm 데이터를 성공적으로 업데이트했습니다! (최신: {max_round}회차, 총 {len(merged_data)}개 회차)")
                             st.info("변경사항을 적용하려면 페이지를 새로고침하세요.")
                             
                             # 로드된 데이터 미리보기
