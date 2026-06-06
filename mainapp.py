@@ -7,6 +7,7 @@ from PIL import Image, ImageDraw, ImageFont
 import datetime
 import os
 import base64
+import json
 from io import BytesIO, StringIO
 import requests
 import urllib.parse
@@ -35,11 +36,77 @@ if 'show_tab' not in st.session_state:
     except:
         st.session_state['show_tab'] = None
 
+STATS_FILE = "app_stats.json"
+
+def get_supabase_headers():
+    """Supabase REST API 헤더를 가져옵니다. (st.secrets에 설정된 경우에만)"""
+    try:
+        if "SUPABASE_URL" in st.secrets and "SUPABASE_KEY" in st.secrets:
+            return {
+                "apikey": st.secrets["SUPABASE_KEY"],
+                "Authorization": f"Bearer {st.secrets['SUPABASE_KEY']}",
+                "Content-Type": "application/json"
+            }
+    except Exception:
+        pass
+    return None
+
+def load_stats():
+    headers = get_supabase_headers()
+    if headers:
+        try:
+            url = f"{st.secrets['SUPABASE_URL']}/rest/v1/app_stats?id=eq.1&select=*"
+            res = requests.get(url, headers=headers, timeout=5)
+            if res.status_code == 200 and res.json():
+                data = res.json()[0]
+                return {
+                    "visitor_count": data.get("visitor_count", 0),
+                    "like_count": data.get("like_count", 0),
+                    "subscribe_count": data.get("subscribe_count", 0)
+                }
+        except Exception as e:
+            print(f"Supabase 연동 오류(Load): {e}")
+
+    # Supabase 설정이 없거나 실패하면 로컬 JSON 파일 사용
+    if os.path.exists(STATS_FILE):
+        try:
+            with open(STATS_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {"visitor_count": 0, "like_count": 0, "subscribe_count": 0}
+
+def save_stats(stats):
+    headers = get_supabase_headers()
+    if headers:
+        try:
+            url = f"{st.secrets['SUPABASE_URL']}/rest/v1/app_stats"
+            payload = {
+                "id": 1,
+                "visitor_count": stats.get("visitor_count", 0),
+                "like_count": stats.get("like_count", 0),
+                "subscribe_count": stats.get("subscribe_count", 0)
+            }
+            upsert_headers = headers.copy()
+            upsert_headers["Prefer"] = "resolution=merge-duplicates"
+            requests.post(url, headers=upsert_headers, json=payload, timeout=5)
+        except Exception as e:
+            print(f"Supabase 연동 오류(Save): {e}")
+            
+    # 로컬 JSON 파일에도 백업 저장
+    try:
+        with open(STATS_FILE, "w", encoding="utf-8") as f:
+            json.dump(stats, f)
+    except Exception:
+        pass
+
+stats_data = load_stats()
+
 # 세션 상태 초기화
 if 'subscribe_count' not in st.session_state:
-    st.session_state['subscribe_count'] = 0
+    st.session_state['subscribe_count'] = stats_data.get('subscribe_count', 0)
 if 'like_count' not in st.session_state:
-    st.session_state['like_count'] = 0
+    st.session_state['like_count'] = stats_data.get('like_count', 0)
 if 'is_subscribed' not in st.session_state:
     st.session_state['is_subscribed'] = False
 
@@ -70,6 +137,9 @@ try:
         
     elif action == "like":
         st.session_state.like_count += 1
+        stats = load_stats()
+        stats['like_count'] = st.session_state.like_count
+        save_stats(stats)
         try:
             st.balloons() # 좋아요 클릭 시 풍선 효과
         except:
@@ -80,13 +150,21 @@ try:
     
     elif action == "subscribe":
         st.session_state['is_subscribed'] = not st.session_state['is_subscribed']
+        stats = load_stats()
         if st.session_state['is_subscribed']:
+            st.session_state.subscribe_count += 1
+            stats['subscribe_count'] = st.session_state.subscribe_count
+            save_stats(stats)
             try:
                 st.snow() # 구독 클릭 시 눈내림 효과
                 st.toast("🎉 구독 감사합니다! 매주 행운의 번호를 받아보세요! 🎁")
             except:
                 pass
         else:
+            if st.session_state.subscribe_count > 0:
+                st.session_state.subscribe_count -= 1
+            stats['subscribe_count'] = st.session_state.subscribe_count
+            save_stats(stats)
             try:
                 st.toast("구독이 취소되었습니다. 다음에 또 만나요! 👋")
             except:
@@ -1305,27 +1383,17 @@ def play_bgm():
     )
 
 def get_and_increment_visitor_count():
-    visitor_file = "visitor_count.txt"
-    count = 0
-    if os.path.exists(visitor_file):
-        try:
-            with open(visitor_file, "r", encoding="utf-8") as f:
-                content = f.read().strip()
-                if content:
-                    count = int(content)
-        except Exception:
-            count = 0
+    # Supabase DB를 사용하면 이 값을 0으로 두고, 아래 설정에서 DB 테이블에 직접 시작 숫자를 입력하세요.
+    BASE_VISITORS = 0 
+    
+    stats = load_stats()
             
     if 'has_visited' not in st.session_state:
         st.session_state['has_visited'] = True
-        count += 1
-        try:
-            with open(visitor_file, "w", encoding="utf-8") as f:
-                f.write(str(count))
-        except Exception:
-            pass
+        stats['visitor_count'] = stats.get('visitor_count', 0) + 1
+        save_stats(stats)
             
-    return count
+    return stats.get('visitor_count', 0) + BASE_VISITORS
 
 def render_header():
     """ Renders the custom top header for the app. """
@@ -1437,102 +1505,19 @@ def render_main_content():
         elif show_tab == 'tab4': tab4_content()
         elif show_tab == 'tab5': tab5_content()
     else:
-        # 엑셀 파일 업로드 섹션 (접을 수 있게)
-        with st.expander("📊 엑셀 파일로 회차 데이터 업로드", expanded=False):
-            st.markdown("로또 회차 데이터를 포함한 .xlsx 또는 .xls 파일을 업로드하여 Pd flame data-3.xlsm에 추가할 수 있습니다.")
-        
-            # Pd flame data-3.xlsm 파일 직접 로드 옵션
-            st.markdown("**또는 기존 엑셀 파일 사용:**")
-            if st.button("Pd flame data-3.xlsm 파일에서 데이터 로드", key="btn_load_pd_flame"):
-                excel_path = "Pd flame data-3.xlsm"
-                if os.path.exists(excel_path):
-                    with st.spinner("Pd flame data-3.xlsm 파일을 처리 중입니다..."):
-                        # 기존 데이터 로드
-                        existing_data = load_lotto_data()
-                        if existing_data is None:
-                            st.error("기존 데이터를 로드할 수 없습니다. Pd flame data-3.xlsm 파일을 확인해주세요.")
-                            st.stop()
-                    
-                        # 엑셀 데이터 로드
-                        try:
-                            excel_data, error_msg = load_excel_data(excel_path)
-                            if error_msg:
-                                st.error(error_msg)
-                                st.stop()
-                            
-                            # 데이터 병합
-                            merged_data, merge_error = merge_excel_data(existing_data, excel_data)
-                            if merge_error:
-                                st.error(merge_error)
-                                st.stop()
-                            
-                            # Excel에 저장
-                            save_success, save_error = save_data_to_excel(merged_data)
-                            if save_error:
-                                st.error(save_error)
-                                st.stop()
-                            
-                            load_lotto_data.clear() # 캐시를 초기화하여 최신 데이터가 반영되도록 함
-                            max_round = merged_data['회차_int'].max()
-                            st.success(f"✅ Pd flame data-3.xlsm 데이터를 성공적으로 업데이트했습니다! (최신: {max_round}회차, 총 {len(merged_data)}개 회차)")
-                            st.info("변경사항을 적용하려면 페이지를 새로고침하세요.")
-                            
-                            # 로드된 데이터 미리보기
-                            st.markdown("**로드된 데이터 미리보기:**")
-                            preview_df = excel_data.head(5)
-                            st.dataframe(preview_df[['회차', '번호1', '번호2', '번호3', '번호4', '번호5', '번호6']])
-                        except Exception as e:
-                            st.error(f"파일 처리 중 오류: {e}")
-                else:
-                    st.error("Pd flame data-3.xlsm 파일을 찾을 수 없습니다.")
-
-            uploaded_excel = st.file_uploader("엑셀 파일 선택 (.xlsx, .xls, .xlsm)", type=["xlsx", "xls", "xlsm"], key="excel_upload")
-        
-            if uploaded_excel is not None:
-                if st.button("데이터 업로드 및 병합", key="btn_upload_excel"):
-                    with st.spinner("엑셀 파일을 처리 중입니다..."):
-                        # 기존 데이터 로드
-                        existing_data = load_lotto_data()
-                        if existing_data is None:
-                            st.error("기존 데이터를 로드할 수 없습니다. CSV 파일을 확인해주세요.")
-                            st.stop()
-                        
-                        # 엑셀 데이터 로드
-                        excel_data, error_msg = load_excel_data(uploaded_excel)
-                        if error_msg:
-                            st.error(error_msg)
-                            st.stop()
-                        
-                        # 데이터 병합
-                        merged_data, merge_error = merge_excel_data(existing_data, excel_data)
-                        if merge_error:
-                            st.error(merge_error)
-                            st.stop()
-                        
-                        # Excel에 저장
-                        save_success, save_error = save_data_to_excel(merged_data)
-                        if save_error:
-                            st.error(save_error)
-                            st.stop()
-                        
-                        st.success(f"✅ 엑셀 데이터를 성공적으로 업로드했습니다! {len(excel_data)}개의 회차가 추가/업데이트되었습니다.")
-                        st.info("변경사항을 적용하려면 페이지를 새로고침하세요.")
-                        
-                        # 업로드된 데이터 미리보기
-                        st.markdown("**업로드된 데이터 미리보기:**")
-                        preview_df = excel_data.head(5)
-                        st.dataframe(preview_df[['회차', '번호1', '번호2', '번호3', '번호4', '번호5', '번호6']])
-
         # 알림 카드를 주석 처리(삭제)하기 위해 변수를 빈 값으로 초기화합니다.
         # f-string 내부에서 복잡한 로직을 수행하면 HTML 소스가 그대로 노출될 위험이 큽니다.
         update_card_html = "" 
+        
+        current_stats = load_stats()
 
         # 메인 제목 영역 렌더링
         st.markdown(f"""
         <div style='text-align:center; color:white; text-shadow: 2px 2px 4px rgba(0,0,0,0.8); padding-top: 60px; display:flex; flex-direction:column; align-items:center;'>
             <h2 class="typing-text" style='color:white; margin-bottom: 20px;'>로또킹 AI 분석</h2>
             <div style="background: rgba(255,255,255,0.1); padding: 5px 20px; border-radius: 20px; font-size: 16px; margin-bottom: 20px; border: 1px solid rgba(255,255,255,0.3); box-shadow: 0 0 10px rgba(0,0,0,0.5);">
-                👀 누적 방문자 수: <b style="color: #ffd700; font-size: 18px;">{get_and_increment_visitor_count()}</b> 명
+                👀 누적 방문자 수: <b style="color: #ffd700; font-size: 18px;">{get_and_increment_visitor_count()}</b> 명 | 
+                🔔 구독자 수: <b style="color: #ffd700; font-size: 18px;">{current_stats.get('subscribe_count', 0)}</b> 명
             </div>
             
             {update_card_html}
