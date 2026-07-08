@@ -55,7 +55,12 @@ def update_lotto_data() -> Tuple[bool, str]:
     latest_old_round = 0
     if os.path.exists(file_path):
         try:
-            df_old = pd.read_csv(file_path, header=None, encoding='utf-8-sig')
+            try:
+                # 기본적으로 utf-8-sig로 시도
+                df_old = pd.read_csv(file_path, header=None, encoding='utf-8-sig')
+            except UnicodeDecodeError:
+                # 실패 시 cp949로 재시도
+                df_old = pd.read_csv(file_path, header=None, encoding='cp949')
             df_old_int = df_old[0].astype(str).str.replace(r'\D+', '', regex=True).astype(int)
             latest_old_round = df_old_int.max()
         except Exception:

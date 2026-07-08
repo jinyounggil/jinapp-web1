@@ -239,8 +239,11 @@ def load_lotto_data():
             print(f"데이터 파일 {file_path}을 찾을 수 없습니다.")
             return None
         
-        # CSV 파일 로드
-        temp_df = pd.read_csv(file_path, header=None, encoding='utf-8-sig')
+        # CSV 파일 로드 (인코딩 자동 감지)
+        try:
+            temp_df = pd.read_csv(file_path, header=None, encoding='utf-8-sig')
+        except UnicodeDecodeError:
+            temp_df = pd.read_csv(file_path, header=None, encoding='cp949')
         
         # 열 개수 체크 (최소 7개: 회차 + 번호 6개)
         if temp_df.shape[1] < 7:
