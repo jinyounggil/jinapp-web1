@@ -12,6 +12,7 @@ from io import BytesIO, StringIO
 import requests
 import urllib.parse
 from typing import Tuple
+from update_data import update_lotto_data
 
 try:
   import cv2
@@ -227,92 +228,19 @@ def generate_lotto_balls_html(numbers, size, font_size, margin="2px", use_flex=F
         
     return "".join(html_output)
 
-def update_lotto_data() -> Tuple[bool, str]:
-    print("🔄 로또 데이터 업데이트 시작...")
-    url = "https://www.dhlottery.co.kr/common.do?method=allWinExel&gubun=byWin"
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Referer': 'https://www.dhlottery.co.kr/gameResult.do?method=byWin',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8'
-    }
-    
-    try:
-        response = requests.get(url, timeout=15, headers=headers)
-        response.raise_for_status()
-        
-        # 인코딩 및 파싱
-        html_text = response.content.decode('cp949', errors='replace')
-        soup = BeautifulSoup(html_text, 'html.parser')
-        table = soup.find('table')
-        
-        if not table:
-            return False, "데이터 테이블을 찾을 수 없습니다."
-
-        dfs = pd.read_html(StringIO(str(table)), header=1)
-        if not dfs:
-            return False, "데이터 변환에 실패했습니다."
-            
-        df_new = dfs[0]
-        
-        # 필요한 열만 선택 및 전처리
-        win_num_cols = [col for col in df_new.columns if str(col).startswith('당첨번호')][:6]
-        if len(win_num_cols) < 6:
-            return False, "당첨번호 데이터를 올바르게 파싱하지 못했습니다."
-        required_cols = ['회차'] + win_num_cols
-        df_new = df_new[required_cols].copy()
-        df_new.columns = ["회차", "번호1", "번호2", "번호3", "번호4", "번호5", "번호6"]
-        
-        df_new = df_new.dropna(subset=['회차'])
-        df_new = df_new[pd.to_numeric(df_new['회차'], errors='coerce').notna()]
-        df_new['회차'] = df_new['회차'].astype(int)
-        
-        latest_new_round = df_new['회차'].max()
-        print(f"📡 서버 최신 회차: {latest_new_round}회")
-
-    except Exception as e:
-        return False, f"데이터 처리 중 오류 발생: {e}"
-
-    # 기존 파일 확인
-    file_path = "past_results.csv"
-    latest_old_round = 0
-    if os.path.exists(file_path):
-        try:
-            df_old = pd.read_csv(file_path, header=None, encoding='utf-8-sig')
-            df_old_int = df_old[0].astype(str).str.replace(r'\D+', '', regex=True).astype(int)
-            latest_old_round = df_old_int.max()
-        except Exception:
-            latest_old_round = 0
-    
-    print(f"📂 로컬 저장 회차: {latest_old_round}회")
-
-    if latest_new_round <= latest_old_round:
-        return True, f"이미 최신 상태입니다. ({latest_old_round}회)"
-
-    # 저장 로직
-    df_to_save = df_new.sort_values(by='회차', ascending=True)
-    df_to_save['회차'] = df_to_save['회차'].astype(str) + "회차"
-    
-    try:
-        df_to_save.to_csv(file_path, index=False, header=False, encoding='utf-8-sig')
-        return True, f"{latest_new_round}회차 업데이트 완료!"
-    except Exception as e:
-        return False, f"파일 저장 실패: {e}"
-
-
 @st.cache_data
 def load_lotto_data():
     """
-    과거 로또 당첨 데이터를 Pd flame data-3.xlsm 파일에서 로드하고 전처리합니다. 오류 발생 시 None을 반환합니다.
+    과거 로또 당첨 데이터를 past_results.csv 파일에서 로드하고 전처리합니다. 오류 발생 시 None을 반환합니다.
     """
+    file_path = "past_results.csv"
     try:
-        # Pd flame data-3.xlsm 파일 로드
-        excel_path = "Pd flame data-3.xlsm"
-        if not os.path.exists(excel_path):
-            print(f"데이터 파일 {excel_path}을 찾을 수 없습니다.")
+        if not os.path.exists(file_path):
+            print(f"데이터 파일 {file_path}을 찾을 수 없습니다.")
             return None
         
-        # Excel 파일 로드
-        temp_df = pd.read_excel(excel_path, engine='openpyxl')
+        # CSV 파일 로드
+        temp_df = pd.read_csv(file_path, header=None, encoding='utf-8-sig')
         
         # 열 개수 체크 (최소 7개: 회차 + 번호 6개)
         if temp_df.shape[1] < 7:
@@ -381,17 +309,26 @@ def merge_excel_data(existing_df, new_df):
     except Exception as e:
         return None, f"데이터 병합 중 오류 발생: {e}"
 
-def save_data_to_excel(df, filename="Pd flame data-3.xlsm"):
+def save_data_to_csv(df, filename="past_results.csv"):
     """
-    데이터를 Excel 파일로 저장합니다.
+    데이터를 CSV 파일로 저장합니다.
     """
     try:
         base_dir = os.path.dirname(os.path.abspath(__file__))
-        excel_path = os.path.join(base_dir, filename)
-        df.to_excel(excel_path, index=False, engine='openpyxl')
+        csv_path = os.path.join(base_dir, filename)
+        
+        df_to_save = df.sort_values(by='회차_int', ascending=True)
+        
+        # '회차' 열을 'xxxx회차' 형식으로 만듭니다.
+        df_to_save['회차'] = df_to_save['회차_int'].astype(str) + "회차"
+        
+        columns_to_save = ["회차", "번호1", "번호2", "번호3", "번호4", "번호5", "번호6"]
+        
+        df_to_save[columns_to_save].to_csv(csv_path, index=False, header=False, encoding='utf-8-sig')
+        st.cache_data.clear() # 데이터 변경 후 캐시 초기화
         return True, None
     except Exception as e:
-        return False, f"Excel 저장 중 오류 발생: {e}"
+        return False, f"CSV 저장 중 오류 발생: {e}"
 
 # --- 회차 및 날짜 계산 공통 함수 ---
 def get_next_round_info():
@@ -598,7 +535,7 @@ def tab3_content():
 
   past_results = load_lotto_data()
   if past_results is None:
-      st.error("`past_results.csv` 파일을 찾을 수 없거나 데이터가 손상되었습니다. 앱을 재시작하거나 데이터를 확인해주세요.")
+      st.error("로또 데이터 파일을 찾을 수 없거나 손상되었습니다. 앱을 재시작하거나 메인화면에서 데이터를 업로드해주세요.")
       return
   latest_round = past_results["회차_int"].max()
   
@@ -710,7 +647,7 @@ def tab4_content():
 
   past_results = load_lotto_data()
   if past_results is None:
-      st.error("`past_results.csv` 파일을 찾을 수 없거나 데이터가 손상되었습니다. 앱을 재시작하거나 데이터를 확인해주세요.")
+      st.error("로또 데이터 파일을 찾을 수 없거나 손상되었습니다. 앱을 재시작하거나 메인화면에서 데이터를 업로드해주세요.")
       return
     
   # 과거 데이터 로드 및 고급 분석
@@ -1172,7 +1109,7 @@ def tab5_content():
 
   past_results = load_lotto_data()
   if past_results is None:
-      st.error("`past_results.csv` 파일을 찾을 수 없거나 데이터가 손상되었습니다. 앱을 재시작하거나 데이터를 확인해주세요.")
+      st.error("로또 데이터 파일을 찾을 수 없거나 손상되었습니다. 앱을 재시작하거나 메인화면에서 데이터를 업로드해주세요.")
       return
 
   try:
