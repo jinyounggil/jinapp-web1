@@ -557,7 +557,8 @@ def tab3_content():
   # 회차 범위 옵션 및 실제 범위 계산
   ranges = [300, 150, 75, 45, 30, 15, 5]
   options = [f"최근 {r}회" for r in ranges]
-  mode = st.selectbox("회차 범위 선택", options)
+  # 45회가 기본 선택이 되도록 index=3 설정
+  mode = st.selectbox("회차 범위 선택", options, index=3)
   n = int(mode.replace("최근 ", "").replace("회", ""))
   min_round = max(latest_round - n + 1, 1)
   data = past_results[(past_results["회차_int"] >= min_round) & (past_results["회차_int"] <= latest_round)]
@@ -728,7 +729,7 @@ def tab4_content():
           w_t = weight_trend_user / total_weight_val
           w_g = weight_gap_user / total_weight_val
       
-      st.info(f"적용 가중치: 빈도 {w_f:.0%} | 최근 추세 {w_t:.0%} | 미출현 {w_g:.0%}")
+      st.markdown(f"<div style='color: white;'>적용 가중치: 빈도 {w_f:.0%} | 최근 추세 {w_t:.0%} | 미출현 {w_g:.0%}</div>", unsafe_allow_html=True)
 
   # 통합 가중치 계산
   weights = {}
@@ -1162,12 +1163,12 @@ def tab5_content():
                      games = [g for g in raw_games if len(g) >= 12]
                      
                      for i, g in enumerate(games):
-                       if i < 5:
+                       if i < 10:
                          nums = [int(g[j:j+2]) for j in range(0, 12, 2)]
                          st.session_state[f"check_g{i}"] = ", ".join(map(str, nums))
                      
                      # 나머지 칸 비우기
-                     for i in range(min(len(games), 5), 5):
+                     for i in range(min(len(games), 10), 10):
                        st.session_state[f"check_g{i}"] = ""
                        
                      st.success(f"✅ QR코드 인식 성공! {len(games)}게임이 입력되었습니다.")
@@ -1231,7 +1232,7 @@ def tab5_content():
     st.write("### 📝 나의 번호 입력 (쉼표 또는 띄어쓰기로 구분)")
     
     user_inputs = []
-    for i in range(5):
+    for i in range(10):
       val = st.text_input(f"게임 {i+1}", placeholder="예: 1, 2, 3, 4, 5, 6", key=f"check_g{i}")
       user_inputs.append(val)
     
@@ -1258,7 +1259,8 @@ def tab5_content():
           rank_str = "낙첨 😅"
           bg_color = "#f0f0f0"
           border_color = "#ddd"
-          
+          text_color = "black" # 기본 텍스트 색상
+
           if match_count == 6:
             rank_str = "🥇 1등 당첨!!"
             bg_color = "#fff5e6"
@@ -1278,11 +1280,17 @@ def tab5_content():
             bg_color = "#fff0f0"
             border_color = "salmon"
           
+          # 낙첨일 경우에만 텍스트 색상을 흰색으로, 배경을 어둡게 변경
+          if rank_str == "낙첨 😅":
+              text_color = "white"
+              bg_color = "#333" # 어두운 배경
+              border_color = "#444"
+
           opacity_map = {n: (1.0 if n in winning_numbers else 0.2) for n in my_nums}
           my_nums_html = generate_lotto_balls_html(my_nums, size=30, font_size=14, opacity_map=opacity_map, highlight_nums=matched)
           
           st.markdown(f"""
-          <div style='border:2px solid {border_color}; background-color:{bg_color}; border-radius:10px; padding:10px; margin-bottom:10px; display:flex; align-items:center; justify-content:space-between;'>
+          <div style='border:2px solid {border_color}; background-color:{bg_color}; color:{text_color}; border-radius:10px; padding:10px; margin-bottom:10px; display:flex; align-items:center; justify-content:space-between;'>
             <div style='display:flex; align-items:center;'>
               <span style='font-weight:bold; margin-right:10px; width:60px;'>게임 {idx+1}</span>
               <div>{my_nums_html}</div>
